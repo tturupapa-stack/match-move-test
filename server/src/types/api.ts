@@ -38,7 +38,8 @@ export type MatchMoveActionResult =
   | { status: 'already_actioned' }
   | { status: 'deadline_passed' }
   | { status: 'invalid_token' }
-  | { status: 'invalid_selection' };
+  | { status: 'invalid_selection' }
+  | { status: 'match_closed' }; // 요청 직전 다른 매니저가 가져가 미정/양도 상태가 아님
 
 // === Admin config ===
 export type AdminConfig = {
@@ -77,7 +78,8 @@ export type FunnelReport = {
     exported: number; // 비즈엠 발송 자료로 추출됨 (bizm_exported)
     pageEntered: number;
     changeRequested: number;
-    keptExisting: number;
+    keptExisting: number; // 명시적 '현재 매치 유지' 선택
+    noResponse: number; // 마감까지 무응답 (유지로 간주)
     changeCompleted: number;
   };
   derived: {
@@ -122,6 +124,7 @@ export const EVENT_TYPES = [
   'page_entered',
   'change_requested',
   'kept_existing',
+  'no_response', // 마감(매치 시작 1h30m 전)까지 무응답 → 유지로 간주 (배치 mark-no-response)
   'entered_after_deadline',
   'change_completed',
   'match_result',

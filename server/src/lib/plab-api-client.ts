@@ -251,14 +251,22 @@ export class PlabApiClient {
     return res.rows as never;
   }
 
-  // ─── Q5: 양도/프로모션 여부 ───
+  // ─── Q5: 양도/프로모션 여부 + 실시간 배정 상태 (action 시점 마감 판정) ───
   async q5MatchTags(matchId: number): Promise<{
     id: number;
+    status: string;
+    manager_id: number | null;
     manager_return: number;
     test_type: number | null;
   } | null> {
-    const sql = 'SELECT id, manager_return, test_type FROM `match` WHERE id = ?';
-    const res = await this.executeSql<{ id: number; manager_return: number; test_type: number | null }>(sql, [matchId]);
+    const sql = 'SELECT id, status, manager_id, manager_return, test_type FROM `match` WHERE id = ?';
+    const res = await this.executeSql<{
+      id: number;
+      status: string;
+      manager_id: number | null;
+      manager_return: number;
+      test_type: number | null;
+    }>(sql, [matchId]);
     return res.rows[0] ?? null;
   }
 

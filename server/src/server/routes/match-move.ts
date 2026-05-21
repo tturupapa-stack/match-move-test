@@ -210,6 +210,27 @@ matchMoveRouter.post('/action', async (req, res) => {
   } catch (err) {
     log.warn('q5 failed; using cached', { err: err instanceof Error ? err.message : String(err) });
   }
+
+  // 요청 직전 다른 매니저가 매치를 가져갔는지 실시간 확인.
+  // 미정(manager 없음/미배정) 또는 양도(manager_return=1) 상태가 아니면 마감 안내.
+  // q5 조회 실패(PLAB 일시 장애) 시에는 막지 않고 캐시 기반으로 진행 (best-effort).
+  if (q5) {
+    const stillReleasable =
+      String(q5.status).toLowerCase() === 'release' &&
+      (q5.manager_id === null ||
+        q5.manager_id === UNASSIGNED_MANAGER_ID ||
+        q5.manager_return === 1);
+    if (!stillReleasable) {
+      log.info('match closed before action', {
+        targetId: target.id,
+        matchId: selected.matchId,
+        status: q5.status,
+        managerId: q5.manager_id,
+      });
+      return res.json({ ok: true, data: { status: 'match_closed' } });
+    }
+  }
+
   const isTransferOrigin = q5 ? q5.manager_return === 1 : selected.isTransferOrigin;
   const testType = q5 ? q5.test_type : selected.isPromotion ? 3 : null;
 

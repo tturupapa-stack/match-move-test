@@ -7,6 +7,7 @@ export function FunnelView({ report }: { report: FunnelReport }) {
     { label: '페이지 진입', value: report.steps.pageEntered },
     { label: '변경 요청', value: report.steps.changeRequested, rate: report.derived.changeRequestRate },
     { label: '유지 선택', value: report.steps.keptExisting },
+    { label: '무응답 (유지 간주)', value: report.steps.noResponse },
     { label: '운영자 처리 완료', value: report.steps.changeCompleted, rate: report.derived.completionRate },
   ];
   return (
