@@ -127,10 +127,10 @@ adminConfigRouter.post('/run-extract', async (req, res) => {
       .json({ ok: false, error: { code: 'invalid_body', message: parsed.error.message } });
   }
   const { targetSchedule, lowThreshold, highThreshold, dryRun } = parsed.data;
-  if (lowThreshold != null && highThreshold != null && lowThreshold >= highThreshold) {
+  if (lowThreshold != null && highThreshold != null && lowThreshold > highThreshold) {
     return res.status(400).json({
       ok: false,
-      error: { code: 'invalid_thresholds', message: '낮음 기준은 높음 기준보다 작아야 합니다.' },
+      error: { code: 'invalid_thresholds', message: '낮음 기준은 높음 기준보다 클 수 없습니다.' },
     });
   }
   try {
