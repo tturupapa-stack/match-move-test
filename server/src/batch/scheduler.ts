@@ -1,6 +1,7 @@
 import cron from 'node-cron';
 import { runCollectResults } from './collect-results.js';
 import { runExtractTargets } from './extract-targets.js';
+import { runMarkNoResponse } from './mark-no-response.js';
 import { log } from '../lib/logger.js';
 
 export function startSchedulers(): void {
@@ -39,6 +40,25 @@ export function startSchedulers(): void {
       timezone: 'Asia/Seoul',
       noOverlap: true,
       name: 'collect-results',
+    },
+  );
+
+  // 매 5분마다 마감(매치 시작 1h30m 전) 경과 + 무응답 대상을 '유지(무응답)'로 집계.
+  cron.schedule(
+    '*/5 * * * *',
+    async () => {
+      try {
+        await runMarkNoResponse();
+      } catch (err) {
+        log.error('mark-no-response cron failed', {
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
+    },
+    {
+      timezone: 'Asia/Seoul',
+      noOverlap: true,
+      name: 'mark-no-response',
     },
   );
 

@@ -37,6 +37,7 @@ adminFunnelRouter.get('/funnel', async (req, res) => {
     pageEntered: counts['page_entered'] ?? 0,
     changeRequested: counts['change_requested'] ?? 0,
     keptExisting: counts['kept_existing'] ?? 0,
+    noResponse: counts['no_response'] ?? 0,
     changeCompleted: counts['change_completed'] ?? 0,
   };
   const derived = {

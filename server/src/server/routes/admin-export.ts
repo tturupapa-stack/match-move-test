@@ -135,3 +135,44 @@ adminExportRouter.post('/export/mark', async (req, res) => {
     data: { marked: upd.rows.length, requested: targetIds.length },
   } satisfies ApiOk<{ marked: number; requested: number }>);
 });
+
+const excludeSchema = z.object({
+  // 클라이언트가 문자열 id를 보내도 허용 (BIGSERIAL이 JSON에서 문자열일 수 있음).
+  targetIds: z.array(z.coerce.number().int().positive()).min(1).max(100_000),
+  excludedBy: z.string().max(64).optional(),
+});
+
+/**
+ * POST /api/admin/export/exclude — 운영자가 발송 대상에서 제외한 대상을 'excluded'로 전환.
+ * 발송하지 않기로 한 대상(오발송 위험·중복 등)을 대기 목록에서 빼되, exported와 구분해
+ * funnel(발송 완료)에 섞이지 않도록 별도 상태로 둔다.
+ */
+adminExportRouter.post('/export/exclude', async (req, res) => {
+  const parsed = excludeSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ ok: false, error: { code: 'invalid_body', message: parsed.error.message } });
+  }
+  const { targetIds, excludedBy } = parsed.data;
+
+  const upd = await query<{ id: number }>(
+    `UPDATE targets
+        SET notification_status = 'excluded'
+      WHERE id = ANY($1::bigint[])
+        AND notification_status = 'pending'
+      RETURNING id`,
+    [targetIds],
+  );
+  for (const row of upd.rows) {
+    await insertEvent({
+      targetId: row.id,
+      eventType: 'bizm_excluded',
+      metadata: { excluded_by: excludedBy ?? null },
+    });
+  }
+  res.json({
+    ok: true,
+    data: { excluded: upd.rows.length, requested: targetIds.length },
+  } satisfies ApiOk<{ excluded: number; requested: number }>);
+});

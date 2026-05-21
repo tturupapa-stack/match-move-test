@@ -5,6 +5,7 @@ export function CurrentMatchCard({ m }: { m: CurrentMatch }) {
     <div className="rounded-xl border border-line bg-white p-5">
       <div className="text-xs uppercase tracking-wide text-muted">현재 매치</div>
       <div className="mt-2 text-lg font-semibold">{m.stadiumName}</div>
+      {m.areaName ? <div className="mt-0.5 text-xs text-muted">{m.areaName}</div> : null}
       <div className="mt-1 text-sm text-muted">{m.scheduleKst}</div>
       <div className="mt-3 text-sm">
         참가자 <span className="font-semibold">{m.participantCount}</span>명

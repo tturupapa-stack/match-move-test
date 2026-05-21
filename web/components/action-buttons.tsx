@@ -33,6 +33,13 @@ export function ActionView({
   if (result === 'invalid_selection') {
     return <StatusBanner tone="danger">선택하신 매치를 처리할 수 없습니다. 다시 시도해주세요.</StatusBanner>;
   }
+  if (result === 'match_closed') {
+    return (
+      <StatusBanner tone="warning">
+        선택하신 매치가 마감되었습니다. 다른 매니저가 먼저 가져가 더 이상 이동할 수 없어요.
+      </StatusBanner>
+    );
+  }
   if (result === 'invalid_token') {
     return <StatusBanner tone="danger">잘못된 접근입니다.</StatusBanner>;
   }

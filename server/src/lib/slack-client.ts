@@ -70,7 +70,8 @@ export class WebhookSlackClient implements SlackClient {
       `현재 매치: ${p.current.stadium} / ${p.current.scheduleKst} / 참가자 ${p.current.participants}명\n` +
       `요청 매치: ${p.selected.stadium} / ${p.selected.scheduleKst} / 참가자 ${p.selected.participants}명 (match_id=${p.selected.matchId})\n` +
       `양도 매물 여부: ${p.selected.isTransferOrigin ? 'YES' : 'NO'}\n` +
-      `프로모션 매치 여부: ${promotionLabel}\n\n` +
+      `프로모션 매치 여부: ${promotionLabel}\n` +
+      `→ 변경 페이지: https://www.plabfootball.com/e-to-play/match/match/${p.selected.matchId}/change/\n\n` +
       `→ 처리 완료 시 이 메시지에 :white_check_mark: 이모지로 마킹`;
     await this.postRaw(text);
   }

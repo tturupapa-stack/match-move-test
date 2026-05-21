@@ -9,6 +9,8 @@ export type CurrentMatch = {
   scheduleKst: string; // 'YYYY-MM-DD HH:mm'
   stadiumName: string;
   participantCount: number;
+  areaId?: number; // 지역구 식별 (plab.area.id). 구버전 데이터엔 없을 수 있음.
+  areaName?: string | null; // 지역구 이름 (plab.area.name)
 };
 
 export type RecommendedMatch = {
@@ -41,7 +43,8 @@ export type MatchMoveActionResult =
   | { status: 'already_actioned' }
   | { status: 'deadline_passed' }
   | { status: 'invalid_token' }
-  | { status: 'invalid_selection' };
+  | { status: 'invalid_selection' }
+  | { status: 'match_closed' }; // 요청 직전 다른 매니저가 가져가 미정/양도 상태가 아님
 
 // === Admin config ===
 export type AdminConfig = {
@@ -80,7 +83,8 @@ export type FunnelReport = {
     exported: number; // 비즈엠 발송 자료로 추출됨 (bizm_exported)
     pageEntered: number;
     changeRequested: number;
-    keptExisting: number;
+    keptExisting: number; // 명시적 '현재 매치 유지' 선택
+    noResponse: number; // 마감까지 무응답 (유지로 간주)
     changeCompleted: number;
   };
   derived: {
@@ -91,6 +95,19 @@ export type FunnelReport = {
     completedTransferPromotion: number;
     totalEstimatedAmount: number;
   };
+};
+
+// === GET /api/admin/stats — 추출 통계 (extracted 이벤트 누적 집계) ===
+export type StatsReport = {
+  range: { from: string; to: string };
+  recommended: {
+    targets: number; // 기간 내 추출된 대상 수 (extracted 이벤트)
+    avg: number; // 대상당 평균 추천 매치 수
+    // 추천 매치 N개를 받은 대상이 몇 건인지 (오름차순)
+    distribution: Array<{ count: number; targets: number }>;
+  };
+  // 현재 매치가 속한 지역구별 대상 수 (내림차순). areaName 미상은 '(미상)'.
+  areas: Array<{ areaId: number | null; areaName: string; targets: number }>;
 };
 
 // === Manual extract (수동 추출 테스트) ===
@@ -121,9 +138,11 @@ export type ManualExtractBody = {
 export const EVENT_TYPES = [
   'extracted',
   'bizm_exported', // 운영자가 비즈엠 발송 자료(xlsx)를 다운로드/발송 처리함 (ADR-012)
+  'bizm_excluded', // 운영자가 발송 대상에서 수동 제외함 (notification_status='excluded')
   'page_entered',
   'change_requested',
   'kept_existing',
+  'no_response', // 마감(매치 시작 1h30m 전)까지 무응답 → 유지로 간주 (배치 mark-no-response)
   'entered_after_deadline',
   'change_completed',
   'match_result',
