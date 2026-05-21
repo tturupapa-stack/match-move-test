@@ -20,3 +20,4 @@ coverage/
 .agent-state/checkpoints/
 .agent-state/dead-letters/
 .agent-state/logs/
+.vercel
