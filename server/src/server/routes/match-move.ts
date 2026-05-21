@@ -85,15 +85,18 @@ matchMoveRouter.get('/state', async (req, res) => {
     const hi = cfg.rows[0]?.high_threshold ?? 6;
     const fresh = await plab.q4RefetchMatches(matchIds);
     const freshById = new Map(fresh.map((r) => [r.id, r]));
-    liveRecs = recs.filter((r) => {
+    liveRecs = recs.flatMap((r) => {
       const f = freshById.get(r.matchId);
-      if (!f) return false;
+      if (!f) return [];
       const stillReleasable =
         String(f.status).toLowerCase() === 'release' &&
         (f.manager_id === null ||
           f.manager_id === UNASSIGNED_MANAGER_ID ||
           f.manager_return === 1);
-      return stillReleasable && Number(f.participant_count) >= hi;
+      const livePartic = Number(f.participant_count);
+      if (!stillReleasable || livePartic < hi) return [];
+      // 표시 참가자 수는 추출 시점 스냅샷이 아닌 Q4 실시간 값을 사용 (stale 표기 방지).
+      return [{ ...r, participantCount: livePartic }];
     });
   } catch (err) {
     log.error('q4 failed; serving cached recs', {
