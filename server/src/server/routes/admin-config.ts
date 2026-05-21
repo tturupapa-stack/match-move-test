@@ -46,10 +46,10 @@ adminConfigRouter.put('/config', async (req, res) => {
   if (!parsed.success) {
     return res.status(400).json({ ok: false, error: { code: 'invalid_body', message: parsed.error.message } });
   }
-  if (parsed.data.lowThreshold >= parsed.data.highThreshold) {
+  if (parsed.data.lowThreshold > parsed.data.highThreshold) {
     return res.status(400).json({
       ok: false,
-      error: { code: 'invalid_thresholds', message: 'lowThreshold must be < highThreshold' },
+      error: { code: 'invalid_thresholds', message: 'lowThreshold must be <= highThreshold' },
     });
   }
   await query(
