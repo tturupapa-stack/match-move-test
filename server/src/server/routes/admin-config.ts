@@ -1,9 +1,11 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { runExtractTargets } from '../../batch/extract-targets.js';
 import { query } from '../../lib/db.js';
 import type {
   AdminConfig,
   ApiOk,
+  ManualExtractResult,
   PromotionMap,
 } from '../../types/api.js';
 
@@ -100,4 +102,44 @@ adminConfigRouter.put('/promotion-map', async (req, res) => {
     );
   }
   res.json({ ok: true, data: { count: parsed.data.entries.length } });
+});
+
+// === 수동 추출 실행 (테스트용) ===
+const runExtractSchema = z.object({
+  targetSchedule: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/, "형식: 'YYYY-MM-DD HH:00:00'")
+    .optional(),
+  lowThreshold: z.number().int().positive().max(50).optional(),
+  highThreshold: z.number().int().positive().max(50).optional(),
+  dryRun: z.boolean().optional().default(true),
+});
+
+/**
+ * POST /api/admin/run-extract — 매치 시각·기준값을 지정해 추출 배치를 수동 실행한다.
+ * dryRun(기본 true)이면 DB 저장·슬랙 발송 없이 미리보기만 반환한다.
+ */
+adminConfigRouter.post('/run-extract', async (req, res) => {
+  const parsed = runExtractSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ ok: false, error: { code: 'invalid_body', message: parsed.error.message } });
+  }
+  const { targetSchedule, lowThreshold, highThreshold, dryRun } = parsed.data;
+  if (lowThreshold != null && highThreshold != null && lowThreshold >= highThreshold) {
+    return res.status(400).json({
+      ok: false,
+      error: { code: 'invalid_thresholds', message: '낮음 기준은 높음 기준보다 작아야 합니다.' },
+    });
+  }
+  try {
+    const summary = await runExtractTargets({ targetSchedule, lowThreshold, highThreshold, dryRun });
+    res.json({ ok: true, data: summary } satisfies ApiOk<ManualExtractResult>);
+  } catch (err) {
+    res.status(502).json({
+      ok: false,
+      error: { code: 'extract_failed', message: err instanceof Error ? err.message : String(err) },
+    });
+  }
 });

@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 const TABS = [
   { href: '/admin/config', label: '운영자 설정' },
   { href: '/admin/export', label: '발송 관리' },
+  { href: '/admin/run', label: '수동 추출' },
   { href: '/admin/funnel', label: 'Funnel 리포트' },
 ];
 

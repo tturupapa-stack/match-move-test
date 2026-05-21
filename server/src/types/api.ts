@@ -90,6 +90,30 @@ export type FunnelReport = {
   };
 };
 
+// === Manual extract (수동 추출 테스트) ===
+export type ExtractPreviewItem = {
+  managerName: string | null;
+  current: CurrentMatch;
+  recommendedCount: number;
+};
+export type ManualExtractResult = {
+  targetSchedule: string;
+  lowThreshold: number;
+  highThreshold: number;
+  dryRun: boolean;
+  rawCandidates: number;
+  afterDedup: number;
+  afterRecommendationFilter: number;
+  inserted: number;
+  preview: ExtractPreviewItem[];
+};
+export type ManualExtractBody = {
+  targetSchedule?: string; // 'YYYY-MM-DD HH:00:00' KST
+  lowThreshold?: number;
+  highThreshold?: number;
+  dryRun?: boolean;
+};
+
 // === Event types ===
 export const EVENT_TYPES = [
   'extracted',

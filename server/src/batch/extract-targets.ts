@@ -21,6 +21,19 @@ export interface ExtractContext {
   hmacSecret: string;
   publicBaseUrl: string;
   now?: Date;
+  /** 지정 시 now+3h 대신 이 시각(KST 'YYYY-MM-DD HH:00:00')으로 추출 (수동 테스트용). */
+  targetSchedule?: string;
+  /** 지정 시 DB test_config 대신 임시 기준값 사용 (수동 테스트용). */
+  lowThreshold?: number;
+  highThreshold?: number;
+  /** true면 DB 저장·슬랙 발송 없이 추출 결과만 미리보기. */
+  dryRun?: boolean;
+}
+
+export interface ExtractPreviewItem {
+  managerName: string | null;
+  current: CurrentMatch;
+  recommendedCount: number;
 }
 
 // 발송 분리(ADR-012→ADR-013): 추출 단계는 메시지를 발송하지 않고
@@ -28,10 +41,15 @@ export interface ExtractContext {
 // 실제 발송은 운영자가 발송 관리 화면(/admin/export)에서 채널톡 복붙으로 처리.
 export interface ExtractSummary {
   targetSchedule: string;
+  lowThreshold: number;
+  highThreshold: number;
+  dryRun: boolean;
   rawCandidates: number;
   afterDedup: number;
   afterRecommendationFilter: number;
   inserted: number;
+  /** dryRun일 때만 채워지는 대상 미리보기. */
+  preview: ExtractPreviewItem[];
 }
 
 interface ConfigRow {
@@ -56,22 +74,35 @@ export async function runExtractTargets(ctxOverride: Partial<ExtractContext> = {
     hmacSecret: ctxOverride.hmacSecret ?? env.HMAC_SECRET,
     publicBaseUrl: ctxOverride.publicBaseUrl ?? env.PUBLIC_BASE_URL,
     now: ctxOverride.now,
+    targetSchedule: ctxOverride.targetSchedule,
+    lowThreshold: ctxOverride.lowThreshold,
+    highThreshold: ctxOverride.highThreshold,
+    dryRun: ctxOverride.dryRun,
   };
 
   const now = ctx.now ?? new Date();
-  const targetScheduleDate = threeHoursLaterTopOfHour(now);
-  const targetScheduleSql = formatKstSqlDateTime(targetScheduleDate);
+  const targetScheduleSql =
+    ctx.targetSchedule ?? formatKstSqlDateTime(threeHoursLaterTopOfHour(now));
+  const dryRun = ctx.dryRun ?? false;
+
+  const cfg: ConfigRow =
+    ctx.lowThreshold != null && ctx.highThreshold != null
+      ? { low_threshold: ctx.lowThreshold, high_threshold: ctx.highThreshold }
+      : await loadActiveConfig();
+
   const summary: ExtractSummary = {
     targetSchedule: targetScheduleSql,
+    lowThreshold: cfg.low_threshold,
+    highThreshold: cfg.high_threshold,
+    dryRun,
     rawCandidates: 0,
     afterDedup: 0,
     afterRecommendationFilter: 0,
     inserted: 0,
+    preview: [],
   };
 
-  log.info('extract-targets start', { targetSchedule: targetScheduleSql });
-
-  const cfg = await loadActiveConfig();
+  log.info('extract-targets start', { targetSchedule: targetScheduleSql, dryRun });
   const q1Rows = await ctx.plab.q1ExtractTargetMatches({
     targetSchedule: targetScheduleSql,
     lowThreshold: cfg.low_threshold,
@@ -122,6 +153,16 @@ export async function runExtractTargets(ctxOverride: Partial<ExtractContext> = {
       isTransferOrigin: r.manager_return === 1,
       isPromotion: r.test_type !== null && [3, 6, 7, 8, 9].includes(r.test_type),
     }));
+
+    // dry-run: 저장·발송 없이 미리보기만 수집하고 다음 후보로.
+    if (dryRun) {
+      summary.preview.push({
+        managerName: candidate.manager_name,
+        current: currentMatchInfo,
+        recommendedCount: recommended.length,
+      });
+      continue;
+    }
 
     // Token (will be regenerated after we know the targets.id)
     const tokenExpiry = tokenExpiryFromSchedule(parseKstSqlDateTime(candidate.schedule));
@@ -174,8 +215,8 @@ export async function runExtractTargets(ctxOverride: Partial<ExtractContext> = {
 
   log.info('extract-targets done', summary as unknown as Record<string, unknown>);
 
-  // 신규 발송 대기가 생겼을 때만 슬랙 추출 알림 (노이즈 방지). 실패해도 배치는 성공 처리.
-  if (summary.inserted > 0) {
+  // 신규 발송 대기가 생겼을 때만 슬랙 추출 알림 (노이즈 방지). dry-run은 발송 안 함.
+  if (!dryRun && summary.inserted > 0) {
     try {
       await ctx.slack.postExtractSummary({
         targetSchedule: summary.targetSchedule,
