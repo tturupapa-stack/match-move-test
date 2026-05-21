@@ -113,7 +113,13 @@ matchMoveRouter.get('/state', async (req, res) => {
     data: {
       status: 'ok',
       current: target.current_match_info,
-      recommendations: liveRecs,
+      // 매니저에게는 양도/프로모션 여부를 노출하지 않는다 (관리자 전용 정보).
+      recommendations: liveRecs.map((r) => ({
+        matchId: r.matchId,
+        scheduleKst: r.scheduleKst,
+        stadiumName: r.stadiumName,
+        participantCount: r.participantCount,
+      })),
     },
   } satisfies ApiOk<MatchMoveState>);
 });

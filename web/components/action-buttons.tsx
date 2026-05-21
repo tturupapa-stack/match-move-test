@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { clientFetch, type MatchMoveActionResult } from '../lib/api';
 import { CurrentMatchCard, RecommendedMatchCard } from './match-card';
 import { StatusBanner } from './status-banner';
-import type { CurrentMatch, RecommendedMatch } from '@shared/api';
+import type { CurrentMatch, RecommendedMatchPublic } from '@shared/api';
 
 type ResultStatus = MatchMoveActionResult['status'];
 
@@ -15,7 +15,7 @@ export function ActionView({
 }: {
   token: string;
   current: CurrentMatch;
-  recommendations: RecommendedMatch[];
+  recommendations: RecommendedMatchPublic[];
 }) {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [result, setResult] = useState<ResultStatus | null>(null);

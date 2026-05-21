@@ -1,4 +1,4 @@
-import type { CurrentMatch, RecommendedMatch } from '@shared/api';
+import type { CurrentMatch, RecommendedMatchPublic } from '@shared/api';
 
 export function CurrentMatchCard({ m }: { m: CurrentMatch }) {
   return (
@@ -18,7 +18,7 @@ export function RecommendedMatchCard({
   selected,
   onSelect,
 }: {
-  m: RecommendedMatch;
+  m: RecommendedMatchPublic;
   selected: boolean;
   onSelect: () => void;
 }) {
@@ -38,10 +38,6 @@ export function RecommendedMatchCard({
         <div className="text-right text-sm">
           <div>
             참가자 <span className="font-semibold">{m.participantCount}</span>명
-          </div>
-          <div className="mt-1 flex gap-1 text-xs text-muted">
-            {m.isTransferOrigin ? <span className="rounded bg-amber-100 px-1.5 py-0.5">양도</span> : null}
-            {m.isPromotion ? <span className="rounded bg-blue-100 px-1.5 py-0.5">프로모션</span> : null}
           </div>
         </div>
       </div>

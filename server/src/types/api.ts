@@ -20,9 +20,12 @@ export type RecommendedMatch = {
   isPromotion: boolean; // test_type IN (3,6,7,8,9)
 };
 
+// 매니저(추천 페이지)에게 노출되는 추천 매치 — 양도/프로모션 여부는 숨긴다 (관리자 전용 정보).
+export type RecommendedMatchPublic = Omit<RecommendedMatch, 'isTransferOrigin' | 'isPromotion'>;
+
 // === GET /api/match-move/state ===
 export type MatchMoveState =
-  | { status: 'ok'; current: CurrentMatch; recommendations: RecommendedMatch[] }
+  | { status: 'ok'; current: CurrentMatch; recommendations: RecommendedMatchPublic[] }
   | { status: 'no_recommendations'; current: CurrentMatch }
   | { status: 'already_actioned' }
   | { status: 'deadline_passed' }

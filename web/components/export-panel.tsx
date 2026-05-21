@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { clientFetch } from '../lib/api';
+import type { RecommendedMatch } from '@shared/api';
 
 export interface PendingItem {
   targetId: number;
@@ -11,6 +12,7 @@ export interface PendingItem {
   stadiumName: string | null;
   exportCount: number;
   messageText: string;
+  recommended: RecommendedMatch[]; // 관리자 전용: 추천받은 매치 + 양도/프로모션 여부
 }
 export interface PendingData {
   count: number;
@@ -145,6 +147,31 @@ export function ExportPanel({ initial }: { initial: PendingData }) {
               <pre className="mt-3 max-h-44 overflow-auto whitespace-pre-wrap rounded-lg bg-surface p-3 text-sm leading-relaxed">
                 {it.messageText}
               </pre>
+
+              {it.recommended.length > 0 && (
+                <div className="mt-3 rounded-lg bg-surface p-3 text-sm">
+                  <div className="mb-1 text-xs font-medium text-muted">
+                    추천받은 매치 {it.recommended.length}개 (관리자 전용)
+                  </div>
+                  <ul className="space-y-1">
+                    {it.recommended.map((r) => (
+                      <li key={r.matchId} className="flex items-center justify-between gap-2">
+                        <span>
+                          {r.scheduleKst} · {r.stadiumName} (참가자 {r.participantCount})
+                        </span>
+                        <span className="flex shrink-0 gap-1">
+                          {r.isTransferOrigin && (
+                            <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs">양도</span>
+                          )}
+                          {r.isPromotion && (
+                            <span className="rounded bg-blue-100 px-1.5 py-0.5 text-xs">프로모션</span>
+                          )}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               <div className="mt-3 flex flex-wrap gap-2">
                 <CopyButton text={it.phone} label="번호 복사" disabled={!it.phone} />

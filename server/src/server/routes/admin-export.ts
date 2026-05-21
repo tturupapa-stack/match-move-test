@@ -6,7 +6,7 @@ import { insertEvent } from '../../lib/event-log.js';
 import { buildMessageBody } from '../../lib/message-builder.js';
 import { createPlabClient } from '../../lib/plab-api-client.js';
 import { log } from '../../lib/logger.js';
-import type { ApiOk, CurrentMatch } from '../../types/api.js';
+import type { ApiOk, CurrentMatch, RecommendedMatch } from '../../types/api.js';
 
 export const adminExportRouter: Router = Router();
 
@@ -15,6 +15,7 @@ interface PendingTargetRow {
   manager_id: number;
   manager_name: string | null;
   current_match_info: CurrentMatch; // jsonb → parsed object
+  recommended_matches: RecommendedMatch[]; // jsonb (관리자 전용: 양도/프로모션 포함)
   token: string;
   export_count: number;
 }
@@ -35,6 +36,7 @@ export interface PendingMessageItem {
   stadiumName: string | null;
   exportCount: number;
   messageText: string; // 채널톡에 그대로 붙여넣을 본문 (메시지 + 추천 페이지 URL)
+  recommended: RecommendedMatch[]; // 관리자 전용: 추천받은 매치 + 양도/프로모션 여부
 }
 
 /**
@@ -45,7 +47,7 @@ export interface PendingMessageItem {
 adminExportRouter.get('/export/pending', async (_req, res) => {
   const env = loadEnv();
   const tr = await query<PendingTargetRow>(
-    `SELECT id, manager_id, manager_name, current_match_info, token, export_count
+    `SELECT id, manager_id, manager_name, current_match_info, recommended_matches, token, export_count
        FROM targets
       WHERE notification_status = 'pending'
       ORDER BY id ASC`,
@@ -82,6 +84,7 @@ adminExportRouter.get('/export/pending', async (_req, res) => {
       stadiumName: cm.stadiumName,
       exportCount: t.export_count,
       messageText: `${body}\n\n▶ 추천 매치 보기: ${url}`,
+      recommended: t.recommended_matches ?? [],
     };
   });
 
