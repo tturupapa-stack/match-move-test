@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { loadEnv } from '../../env.js';
+import { UNASSIGNED_MANAGER_ID } from '../../lib/constants.js';
 import { query } from '../../lib/db.js';
 import { hasAnyEvent, insertEvent } from '../../lib/event-log.js';
 import { log } from '../../lib/logger.js';
@@ -88,7 +89,10 @@ matchMoveRouter.get('/state', async (req, res) => {
       const f = freshById.get(r.matchId);
       if (!f) return false;
       const stillReleasable =
-        f.status === 'release' && (f.manager_id === null || f.manager_return === 1);
+        f.status === 'release' &&
+        (f.manager_id === null ||
+          f.manager_id === UNASSIGNED_MANAGER_ID ||
+          f.manager_return === 1);
       return stillReleasable && Number(f.participant_count) >= hi;
     });
   } catch (err) {

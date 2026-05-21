@@ -2,6 +2,7 @@
 
 | ADR | Date | Decision | Status |
 |---|---|---|---|
+| ADR-015 | 2026-05-21 | **미배정 매치 식별**: PLAB은 '매니저 미배정'을 `manager_id IS NULL`이 아니라 더미 매니저 `id=102`("미정", 연락처 없음)로 표현한다. Q1(이동 대상)은 `manager_id <> 102`로 102 제외, Q2/Q4(추천 목적지)는 `manager_id = 102`도 포함. 상수 `UNASSIGNED_MANAGER_ID=102`(server/src/lib/constants.ts). 효과: "미정"이 대상에서 빠지고 실제 매니저만 추출됨. | accepted |
 | ADR-014 | 2026-05-21 | **타임존 정정 (ADR-003 supersede)**: PLAB DB는 `schedule`을 **UTC**로 저장(진단: session time_zone=UTC, NOW()==UTC_TIMESTAMP(), 샘플 schedule이 ISO 'Z'). 기존 `time.ts`가 KST 문자열로 `schedule = ?` 비교 → **9시간 엇갈려** 잘못된 시각의 매치를 추출(예: 19:00 KST 요청 시 0건, 실제는 UTC 10:00에 92건 존재). 수정: DB 비교는 `formatUtcSqlDateTime`(UTC), DB schedule 파싱은 `parseDbSchedule`(UTC), 표시는 `formatKstDisplay`/`formatKstSqlDateTime`(KST). 수동 입력 targetSchedule은 KST로 해석 후 UTC 변환. | accepted |
 | ADR-001 | 2026-05-20 | 토큰 만료 60초 마진 (action 시점에) | accepted |
 | ADR-002 | 2026-05-20 | 단일 HMAC 시크릿. 회전 정책 없음. | accepted |

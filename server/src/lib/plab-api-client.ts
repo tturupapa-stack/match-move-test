@@ -1,3 +1,4 @@
+import { UNASSIGNED_MANAGER_ID } from './constants.js';
 import { log } from './logger.js';
 
 /**
@@ -175,6 +176,7 @@ export class PlabApiClient {
       JOIN manager mgr ON m.manager_id = mgr.id
       WHERE m.status = 'release'
         AND m.manager_id IS NOT NULL
+        AND m.manager_id <> ${UNASSIGNED_MANAGER_ID}
         AND m.manager_return = 0
         AND m.schedule = ?
         AND MINUTE(m.schedule) = 0
@@ -216,7 +218,7 @@ export class PlabApiClient {
       JOIN stadium s ON m.stadium_id = s.id
       JOIN stadium_group sg ON s.group_id = sg.id
       WHERE m.status = 'release'
-        AND (m.manager_id IS NULL OR m.manager_return = 1)
+        AND (m.manager_id IS NULL OR m.manager_id = ${UNASSIGNED_MANAGER_ID} OR m.manager_return = 1)
         AND m.schedule = ?
         AND sg.area_id = ?
       HAVING participant_count >= ?
