@@ -9,6 +9,8 @@ import { makeToken } from '../lib/token.js';
 import {
   formatKstDisplay,
   formatKstSqlDateTime,
+  formatUtcSqlDateTime,
+  parseDbSchedule,
   parseKstSqlDateTime,
   threeHoursLaterTopOfHour,
   tokenExpiryFromSchedule,
@@ -81,8 +83,13 @@ export async function runExtractTargets(ctxOverride: Partial<ExtractContext> = {
   };
 
   const now = ctx.now ?? new Date();
-  const targetScheduleSql =
-    ctx.targetSchedule ?? formatKstSqlDateTime(threeHoursLaterTopOfHour(now));
+  // 매치 시각: 수동 입력(ctx.targetSchedule)은 KST로 해석, 자동은 now+3h.
+  const targetDate = ctx.targetSchedule
+    ? parseKstSqlDateTime(ctx.targetSchedule)
+    : threeHoursLaterTopOfHour(now);
+  // PLAB DB는 schedule을 UTC로 저장 → 비교는 UTC 문자열, 표시는 KST.
+  const targetScheduleUtc = formatUtcSqlDateTime(targetDate);
+  const targetScheduleKst = formatKstSqlDateTime(targetDate);
   const dryRun = ctx.dryRun ?? false;
 
   const cfg: ConfigRow =
@@ -91,7 +98,7 @@ export async function runExtractTargets(ctxOverride: Partial<ExtractContext> = {
       : await loadActiveConfig();
 
   const summary: ExtractSummary = {
-    targetSchedule: targetScheduleSql,
+    targetSchedule: targetScheduleKst,
     lowThreshold: cfg.low_threshold,
     highThreshold: cfg.high_threshold,
     dryRun,
@@ -102,9 +109,13 @@ export async function runExtractTargets(ctxOverride: Partial<ExtractContext> = {
     preview: [],
   };
 
-  log.info('extract-targets start', { targetSchedule: targetScheduleSql, dryRun });
+  log.info('extract-targets start', {
+    targetScheduleKst,
+    targetScheduleUtc,
+    dryRun,
+  });
   const q1Rows = await ctx.plab.q1ExtractTargetMatches({
-    targetSchedule: targetScheduleSql,
+    targetSchedule: targetScheduleUtc,
     lowThreshold: cfg.low_threshold,
   });
   summary.rawCandidates = q1Rows.length;
@@ -124,7 +135,7 @@ export async function runExtractTargets(ctxOverride: Partial<ExtractContext> = {
     let q2Rows: Awaited<ReturnType<PlabApiClient['q2FindRecommendations']>> = [];
     try {
       q2Rows = await ctx.plab.q2FindRecommendations({
-        targetSchedule: targetScheduleSql,
+        targetSchedule: targetScheduleUtc,
         areaId: candidate.area_id,
         highThreshold: cfg.high_threshold,
       });
@@ -141,13 +152,13 @@ export async function runExtractTargets(ctxOverride: Partial<ExtractContext> = {
     // Build payloads
     const currentMatchInfo: CurrentMatch = {
       matchId: candidate.match_id,
-      scheduleKst: formatKstDisplay(parseKstSqlDateTime(candidate.schedule)),
+      scheduleKst: formatKstDisplay(parseDbSchedule(candidate.schedule)),
       stadiumName: candidate.stadium_name,
       participantCount: Number(candidate.participant_count),
     };
     const recommended: RecommendedMatch[] = q2Rows.slice(0, 5).map((r) => ({
       matchId: r.match_id,
-      scheduleKst: formatKstDisplay(parseKstSqlDateTime(r.schedule)),
+      scheduleKst: formatKstDisplay(parseDbSchedule(r.schedule)),
       stadiumName: r.stadium_name,
       participantCount: Number(r.participant_count),
       isTransferOrigin: r.manager_return === 1,
@@ -165,7 +176,7 @@ export async function runExtractTargets(ctxOverride: Partial<ExtractContext> = {
     }
 
     // Token (will be regenerated after we know the targets.id)
-    const tokenExpiry = tokenExpiryFromSchedule(parseKstSqlDateTime(candidate.schedule));
+    const tokenExpiry = tokenExpiryFromSchedule(parseDbSchedule(candidate.schedule));
     // Use a placeholder token first; replace post-insert.
     const tempToken = randomBytes(16).toString('hex');
 

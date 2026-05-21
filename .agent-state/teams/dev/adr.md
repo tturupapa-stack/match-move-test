@@ -2,6 +2,7 @@
 
 | ADR | Date | Decision | Status |
 |---|---|---|---|
+| ADR-014 | 2026-05-21 | **타임존 정정 (ADR-003 supersede)**: PLAB DB는 `schedule`을 **UTC**로 저장(진단: session time_zone=UTC, NOW()==UTC_TIMESTAMP(), 샘플 schedule이 ISO 'Z'). 기존 `time.ts`가 KST 문자열로 `schedule = ?` 비교 → **9시간 엇갈려** 잘못된 시각의 매치를 추출(예: 19:00 KST 요청 시 0건, 실제는 UTC 10:00에 92건 존재). 수정: DB 비교는 `formatUtcSqlDateTime`(UTC), DB schedule 파싱은 `parseDbSchedule`(UTC), 표시는 `formatKstDisplay`/`formatKstSqlDateTime`(KST). 수동 입력 targetSchedule은 KST로 해석 후 UTC 변환. | accepted |
 | ADR-001 | 2026-05-20 | 토큰 만료 60초 마진 (action 시점에) | accepted |
 | ADR-002 | 2026-05-20 | 단일 HMAC 시크릿. 회전 정책 없음. | accepted |
 | ADR-003 | 2026-05-20 | 모든 타임존 Asia/Seoul. PLAB Q1 schedule은 KST 정시 문자열. | accepted |

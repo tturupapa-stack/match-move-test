@@ -84,3 +84,11 @@
 - **해결**: `--env-file`을 폐기하고 `dotenv` + `{ override: true }`로 전환. 진입점(`server/src/env.ts`)과 `scripts/migrate.ts` 최상단에서 `import.meta.url` 기준 루트 `.env`를 override 로드. 단 **`NODE_ENV==='test'`면 스킵**(vitest의 NODE_ENV/기본값 보존, .env의 `NODE_ENV=development`가 테스트 환경을 덮지 않도록). `#`로 시작하는 값은 `.env`에서 따옴표로 감싼다(`SLACK_CHANNEL="#match-move-test"`).
 - **재발 방지**: 환경변수가 셸에 주입될 수 있는 환경(CI/하네스/컨테이너)에서는 `.env`를 신뢰 소스로 강제하려면 `--env-file`이 아니라 `dotenv override`를 쓴다. 값에 `#`/공백/특수문자가 있으면 따옴표 필수.
 - **재발 빈도**: 1회 (L-2026-05-21-01에서 채택한 `--env-file` 방식의 한계가 슬랙 연동에서 드러남)
+
+### L-2026-05-21-07: 외부 DB의 시각 컬럼 타임존을 가정하지 말고 측정하라 (PLAB schedule은 UTC)
+- **증상**: 매치 추출이 시간대마다 들쭉날쭉(저녁은 0건, 낮은 수십 건)했고, 사용자가 "저녁 매치가 실제로 많은데 0건"이라고 지적. PRD/코드는 PLAB `schedule`을 KST로 가정.
+- **진단**: PLAB에 `SELECT NOW(), UTC_TIMESTAMP(), @@session.time_zone` + schedule 샘플 조회 → **session UTC, NOW()==UTC, schedule이 ISO 'Z'**. 즉 schedule은 UTC 저장. KST 19:00 매치는 DB에 10:00(UTC)로 존재.
+- **원인**: `time.ts`가 `formatKstSqlDateTime`(KST 문자열)로 `schedule = ?` 비교 → DB(UTC)와 **9시간 엇갈림**. 그동안 추출된 매치도 전부 9시간 어긋난 것이었음(검증 전까지 아무도 못 알아챔 — 추출 자체는 "0이 아닌 수"가 나와서 정상처럼 보였다).
+- **해결**: 비교용 `formatUtcSqlDateTime`(UTC) + DB 파싱 `parseDbSchedule`(UTC) 추가, 표시만 KST(`formatKstDisplay`). 수동 입력은 KST→UTC 변환. ADR-014로 ADR-003 정정.
+- **재발 방지**: 외부 DB의 datetime을 다룰 때 **반드시 타임존을 쿼리로 확인**(NOW vs UTC_TIMESTAMP, 샘플 값의 'Z' 여부)하고, "비교는 DB 타임존, 표시는 사용자 타임존"으로 분리. PRD에 "schedule은 KST"처럼 미검증 가정을 적지 말 것.
+- **재발 빈도**: 1회 (배포 후 사용자 지적으로 발견 — 단위 테스트는 mock이라 못 잡음. L-02/L-04와 같은 교훈: 외부 의존은 실 데이터로 검증해야 한다)

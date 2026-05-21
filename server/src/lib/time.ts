@@ -63,6 +63,33 @@ export function formatKstDisplay(d: Date): string {
 }
 
 /**
+ * Format a Date as UTC 'YYYY-MM-DD HH:mm:ss' — PLAB DB가 schedule을 UTC로 저장하므로
+ * `schedule = ?` 비교에는 반드시 이 형식을 사용한다 (KST 문자열로 비교하면 9시간 어긋남).
+ */
+export function formatUtcSqlDateTime(d: Date): string {
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(
+    d.getUTCHours(),
+  )}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
+}
+
+/**
+ * Parse a PLAB DB schedule value (UTC) into a Date.
+ * PLAB은 ISO('...Z') 또는 'YYYY-MM-DD HH:mm:ss'(UTC)로 반환한다.
+ */
+export function parseDbSchedule(s: string): Date {
+  if (s.includes('T')) {
+    // ISO 8601 (보통 'Z' 포함). 그대로 파싱.
+    const d = new Date(s);
+    if (Number.isNaN(d.getTime())) throw new Error(`invalid db schedule: ${s}`);
+    return d;
+  }
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})[ ](\d{2}):(\d{2}):(\d{2})/);
+  if (!m) throw new Error(`invalid db schedule: ${s}`);
+  const [, y, mo, d, h, mi, se] = m;
+  return new Date(Date.UTC(+y!, +mo! - 1, +d!, +h!, +mi!, +se!));
+}
+
+/**
  * Compute the KST hour-start scheduled `now + 3h` (PRD: 3시간 후 정시 매치).
  * Returns the Date pointing at that instant in absolute time (UTC underneath).
  */
