@@ -4,6 +4,7 @@ import { errorHandler, notFound } from './middleware/error.js';
 import { adminConfigRouter } from './routes/admin-config.js';
 import { adminExportRouter } from './routes/admin-export.js';
 import { adminFunnelRouter } from './routes/admin-funnel.js';
+import { adminStatsRouter } from './routes/admin-stats.js';
 import { healthRouter } from './routes/health.js';
 import { matchMoveRouter } from './routes/match-move.js';
 import { slackWebhookRouter } from './routes/slack-webhook.js';
@@ -33,6 +34,7 @@ export function createApp(): Express {
   app.use('/api/admin', adminConfigRouter);
   app.use('/api/admin', adminExportRouter);
   app.use('/api/admin', adminFunnelRouter);
+  app.use('/api/admin', adminStatsRouter);
 
   app.use(notFound);
   app.use(errorHandler);

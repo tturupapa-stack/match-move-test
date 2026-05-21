@@ -155,6 +155,8 @@ export async function runExtractTargets(ctxOverride: Partial<ExtractContext> = {
       scheduleKst: formatKstDisplay(parseDbSchedule(candidate.schedule)),
       stadiumName: candidate.stadium_name,
       participantCount: Number(candidate.participant_count),
+      areaId: candidate.area_id,
+      areaName: candidate.area_name,
     };
     const recommended: RecommendedMatch[] = q2Rows.slice(0, 5).map((r) => ({
       matchId: r.match_id,
@@ -222,7 +224,12 @@ export async function runExtractTargets(ctxOverride: Partial<ExtractContext> = {
     await insertEvent({
       targetId: insertedTargetId,
       eventType: 'extracted',
-      metadata: { match_id: candidate.match_id, recommended_count: recommended.length },
+      metadata: {
+        match_id: candidate.match_id,
+        recommended_count: recommended.length,
+        area_id: candidate.area_id,
+        area_name: candidate.area_name,
+      },
     });
     // 자동 발송 없음 (ADR-013). notification_status='pending'(DEFAULT)으로 누적되어
     // 운영자가 발송 관리 화면에서 대상자별 메시지를 복사해 채널톡으로 발송한다.

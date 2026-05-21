@@ -152,6 +152,7 @@ export class PlabApiClient {
       manager_id: number;
       stadium_id: number;
       area_id: number;
+      area_name: string | null;
       stadium_name: string;
       manager_name: string;
       manager_phone: string;
@@ -165,6 +166,7 @@ export class PlabApiClient {
         m.manager_id,
         m.stadium_id,
         sg.area_id,
+        a.name AS area_name,
         sg.name AS stadium_name,
         mgr.name AS manager_name,
         mgr.phone AS manager_phone,
@@ -173,6 +175,7 @@ export class PlabApiClient {
       FROM \`match\` m
       JOIN stadium s ON m.stadium_id = s.id
       JOIN stadium_group sg ON s.group_id = sg.id
+      LEFT JOIN area a ON sg.area_id = a.id
       JOIN manager mgr ON m.manager_id = mgr.id
       WHERE m.status = 'release'
         AND m.manager_id IS NOT NULL

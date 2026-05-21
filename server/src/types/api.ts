@@ -9,6 +9,8 @@ export type CurrentMatch = {
   scheduleKst: string; // 'YYYY-MM-DD HH:mm'
   stadiumName: string;
   participantCount: number;
+  areaId?: number; // 지역구 식별 (plab.area.id). 구버전 데이터엔 없을 수 있음.
+  areaName?: string | null; // 지역구 이름 (plab.area.name)
 };
 
 export type RecommendedMatch = {
@@ -90,6 +92,19 @@ export type FunnelReport = {
     completedTransferPromotion: number;
     totalEstimatedAmount: number;
   };
+};
+
+// === GET /api/admin/stats — 추출 통계 (extracted 이벤트 누적 집계) ===
+export type StatsReport = {
+  range: { from: string; to: string };
+  recommended: {
+    targets: number; // 기간 내 추출된 대상 수 (extracted 이벤트)
+    avg: number; // 대상당 평균 추천 매치 수
+    // 추천 매치 N개를 받은 대상이 몇 건인지 (오름차순)
+    distribution: Array<{ count: number; targets: number }>;
+  };
+  // 현재 매치가 속한 지역구별 대상 수 (내림차순). areaName 미상은 '(미상)'.
+  areas: Array<{ areaId: number | null; areaName: string; targets: number }>;
 };
 
 // === Manual extract (수동 추출 테스트) ===
