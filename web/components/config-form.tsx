@@ -23,8 +23,8 @@ export function ConfigForm({
 
   const saveConfig = async () => {
     setErr(null);
-    if (low >= high) {
-      setErr('낮음 기준은 높음 기준보다 작아야 합니다.');
+    if (low > high) {
+      setErr('낮음 기준은 높음 기준보다 클 수 없습니다.');
       return;
     }
     setSaving(true);
@@ -82,6 +82,9 @@ export function ConfigForm({
             />
           </label>
         </div>
+        <p className="mt-2 text-xs text-muted">
+          두 값을 같게 하면 중간 구간 없이 낮음/높음으로만 나뉩니다. (예: 둘 다 5 → 4명 이하 낮음, 5명 이상 높음)
+        </p>
         <button
           type="button"
           onClick={() => void saveConfig()}
