@@ -89,7 +89,7 @@ matchMoveRouter.get('/state', async (req, res) => {
       const f = freshById.get(r.matchId);
       if (!f) return false;
       const stillReleasable =
-        f.status === 'release' &&
+        String(f.status).toLowerCase() === 'release' &&
         (f.manager_id === null ||
           f.manager_id === UNASSIGNED_MANAGER_ID ||
           f.manager_return === 1);
