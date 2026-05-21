@@ -110,6 +110,24 @@ export type StatsReport = {
   areas: Array<{ areaId: number | null; areaName: string; targets: number }>;
 };
 
+// === GET /api/admin/export/history — 발송 완료/대상 제외 개별 이력 ===
+export type ExportHistoryItem = {
+  id: number; // event_log.id
+  status: 'exported' | 'excluded'; // bizm_exported | bizm_excluded
+  occurredKst: string; // 처리 시각 'YYYY-MM-DD HH:mm' (KST)
+  targetId: number | null;
+  managerName: string | null;
+  matchTime: string | null; // 현재 매치 시각 (current_match_info.scheduleKst)
+  stadiumName: string | null;
+  operator: string | null; // 처리자 (marked_by | excluded_by)
+};
+export type ExportHistoryReport = {
+  range: { from: string; to: string };
+  exportedCount: number; // 기간 내 발송 완료 총 건수
+  excludedCount: number; // 기간 내 대상 제외 총 건수
+  items: ExportHistoryItem[]; // 최신순 (limit 적용 가능)
+};
+
 // === Manual extract (수동 추출 테스트) ===
 export type ExtractPreviewItem = {
   managerName: string | null;
