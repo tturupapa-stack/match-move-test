@@ -118,6 +118,7 @@ export type ManualExtractBody = {
 export const EVENT_TYPES = [
   'extracted',
   'bizm_exported', // 운영자가 비즈엠 발송 자료(xlsx)를 다운로드/발송 처리함 (ADR-012)
+  'bizm_excluded', // 운영자가 발송 대상에서 수동 제외함 (notification_status='excluded')
   'page_entered',
   'change_requested',
   'kept_existing',

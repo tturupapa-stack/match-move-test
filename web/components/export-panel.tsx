@@ -79,6 +79,25 @@ export function ExportPanel({ initial }: { initial: PendingData }) {
     }
   };
 
+  const exclude = async (targetIds: number[]) => {
+    if (targetIds.length === 0) return;
+    setBusy(true);
+    setErr(null);
+    setMsg(null);
+    const r = await clientFetch<{ excluded: number; requested: number }>('/api/admin/export/exclude', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ targetIds, excludedBy: 'admin-ui' }),
+    });
+    setBusy(false);
+    if (r.ok) {
+      setMsg(`${r.data.excluded}건을 발송 대상에서 제외했습니다.`);
+      await refresh();
+    } else {
+      setErr(r.error.message);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <section className="rounded-xl border border-line bg-white p-6">
@@ -156,6 +175,22 @@ export function ExportPanel({ initial }: { initial: PendingData }) {
                   className="inline-flex items-center rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-40"
                 >
                   발송 완료
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        `${it.managerName ?? `대상 #${it.targetId}`} 님을 발송 대상에서 제외할까요?`,
+                      )
+                    ) {
+                      void exclude([it.targetId]);
+                    }
+                  }}
+                  disabled={busy}
+                  className="inline-flex items-center rounded-lg border border-danger px-3 py-1.5 text-sm font-medium text-danger hover:bg-danger/10 disabled:opacity-40"
+                >
+                  대상 제외
                 </button>
               </div>
             </li>
