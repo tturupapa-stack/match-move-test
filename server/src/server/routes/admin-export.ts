@@ -6,7 +6,13 @@ import { insertEvent } from '../../lib/event-log.js';
 import { buildMessageBody } from '../../lib/message-builder.js';
 import { createPlabClient } from '../../lib/plab-api-client.js';
 import { log } from '../../lib/logger.js';
-import type { ApiOk, CurrentMatch, RecommendedMatch } from '../../types/api.js';
+import type {
+  ApiOk,
+  CurrentMatch,
+  ExportHistoryItem,
+  ExportHistoryReport,
+  RecommendedMatch,
+} from '../../types/api.js';
 
 export const adminExportRouter: Router = Router();
 
@@ -175,4 +181,76 @@ adminExportRouter.post('/export/exclude', async (req, res) => {
     ok: true,
     data: { excluded: upd.rows.length, requested: targetIds.length },
   } satisfies ApiOk<{ excluded: number; requested: number }>);
+});
+
+interface HistoryRow {
+  id: number;
+  event_type: 'bizm_exported' | 'bizm_excluded';
+  occurred_kst: string;
+  target_id: number | null;
+  manager_name: string | null;
+  match_time: string | null;
+  stadium_name: string | null;
+  operator: string | null;
+}
+
+/**
+ * GET /api/admin/export/history?from=ISO&to=ISO&limit=N
+ * 발송 완료(bizm_exported)·대상 제외(bizm_excluded)를 한 건씩 최신순으로 조회한다.
+ * event_log를 targets와 LEFT JOIN해 매니저/매치 정보를 함께 보여준다.
+ * (구버전 대상이 삭제됐으면 target 정보는 null로 남는다.)
+ */
+adminExportRouter.get('/export/history', async (req, res) => {
+  const from = String(req.query.from ?? new Date(Date.now() - 30 * 86400_000).toISOString());
+  const to = String(req.query.to ?? new Date().toISOString());
+  const limit = Math.min(Math.max(Number(req.query.limit) || 500, 1), 5000);
+
+  const rowsRes = await query<HistoryRow>(
+    `SELECT
+        e.id,
+        e.event_type,
+        to_char(e.occurred_at AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD HH24:MI') AS occurred_kst,
+        e.target_id,
+        t.manager_name,
+        t.current_match_info->>'scheduleKst' AS match_time,
+        t.current_match_info->>'stadiumName' AS stadium_name,
+        COALESCE(e.metadata->>'marked_by', e.metadata->>'excluded_by') AS operator
+       FROM event_log e
+       LEFT JOIN targets t ON t.id = e.target_id
+      WHERE e.event_type IN ('bizm_exported', 'bizm_excluded')
+        AND e.occurred_at BETWEEN $1 AND $2
+      ORDER BY e.occurred_at DESC, e.id DESC
+      LIMIT $3`,
+    [from, to, limit],
+  );
+
+  // 카운트는 limit과 무관하게 기간 전체 기준으로 집계.
+  const countRes = await query<{ event_type: string; n: string }>(
+    `SELECT event_type, COUNT(*)::text AS n
+       FROM event_log
+      WHERE event_type IN ('bizm_exported', 'bizm_excluded')
+        AND occurred_at BETWEEN $1 AND $2
+      GROUP BY event_type`,
+    [from, to],
+  );
+  const countOf = (t: string) => Number(countRes.rows.find((r) => r.event_type === t)?.n ?? 0);
+
+  const items: ExportHistoryItem[] = rowsRes.rows.map((r) => ({
+    id: Number(r.id),
+    status: r.event_type === 'bizm_exported' ? 'exported' : 'excluded',
+    occurredKst: r.occurred_kst,
+    targetId: r.target_id != null ? Number(r.target_id) : null,
+    managerName: r.manager_name,
+    matchTime: r.match_time,
+    stadiumName: r.stadium_name,
+    operator: r.operator,
+  }));
+
+  const data: ExportHistoryReport = {
+    range: { from, to },
+    exportedCount: countOf('bizm_exported'),
+    excludedCount: countOf('bizm_excluded'),
+    items,
+  };
+  res.json({ ok: true, data } satisfies ApiOk<ExportHistoryReport>);
 });
