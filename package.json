@@ -1,0 +1,23 @@
+{
+  "name": "match-move-test",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Manager match move hypothesis verification test system (disposable)",
+  "type": "module",
+  "workspaces": [
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "dev": "concurrently -k -n server,web -c blue,green \"npm:dev -w server\" \"npm:dev -w web\"",
+    "build": "npm run build -w server && npm run build -w web",
+    "test": "npm run test -w server",
+    "lint": "echo 'lint not configured (disposable system)'"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

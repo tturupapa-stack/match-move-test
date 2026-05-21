@@ -1,0 +1,134 @@
+import { Router } from 'express';
+import { z } from 'zod';
+import { loadEnv } from '../../env.js';
+import { query } from '../../lib/db.js';
+import { insertEvent } from '../../lib/event-log.js';
+import { buildMessageBody } from '../../lib/message-builder.js';
+import { createPlabClient } from '../../lib/plab-api-client.js';
+import { log } from '../../lib/logger.js';
+import type { ApiOk, CurrentMatch } from '../../types/api.js';
+
+export const adminExportRouter: Router = Router();
+
+interface PendingTargetRow {
+  id: number;
+  manager_id: number;
+  manager_name: string | null;
+  current_match_info: CurrentMatch; // jsonb → parsed object
+  token: string;
+  export_count: number;
+}
+
+function buttonUrlFor(publicBaseUrl: string, token: string): string {
+  return `${publicBaseUrl.replace(/\/$/, '')}/match-move?t=${encodeURIComponent(token)}`;
+}
+
+function digitsOnly(phone: string): string {
+  return phone.replace(/[^0-9]/g, '');
+}
+
+export interface PendingMessageItem {
+  targetId: number;
+  managerName: string | null;
+  phone: string; // 숫자만 (식별용). PLAB 조회 실패 시 빈 문자열.
+  matchTime: string | null;
+  stadiumName: string | null;
+  exportCount: number;
+  messageText: string; // 채널톡에 그대로 붙여넣을 본문 (메시지 + 추천 페이지 URL)
+}
+
+/**
+ * GET /api/admin/export/pending — 발송 대기 대상 + 채널톡 복붙용 메시지.
+ * 대상자가 적은 운영(ADR-013)을 가정해 1:1 복붙 형식으로 제공한다.
+ * phone은 PLAB에서 조회만 하고 자체 DB에 저장하지 않는다 (PRD §5.2). 조회 실패해도 목록은 반환.
+ */
+adminExportRouter.get('/export/pending', async (_req, res) => {
+  const env = loadEnv();
+  const tr = await query<PendingTargetRow>(
+    `SELECT id, manager_id, manager_name, current_match_info, token, export_count
+       FROM targets
+      WHERE notification_status = 'pending'
+      ORDER BY id ASC`,
+  );
+
+  let phoneMap = new Map<number, string>();
+  if (tr.rows.length > 0) {
+    const managerIds = [...new Set(tr.rows.map((t) => t.manager_id))];
+    try {
+      const phones = await createPlabClient(env).qManagerPhones(managerIds);
+      phoneMap = new Map(phones.map((p) => [p.id, p.phone]));
+    } catch (err) {
+      log.error('pending: manager phone lookup failed (best-effort)', {
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  const items: PendingMessageItem[] = tr.rows.map((t) => {
+    const cm = t.current_match_info;
+    const url = buttonUrlFor(env.PUBLIC_BASE_URL, t.token);
+    const body = buildMessageBody({
+      managerName: t.manager_name ?? '',
+      matchTime: cm.scheduleKst,
+      stadiumName: cm.stadiumName,
+      participantCount: cm.participantCount,
+    });
+    const rawPhone = phoneMap.get(t.manager_id) ?? '';
+    return {
+      targetId: Number(t.id),
+      managerName: t.manager_name,
+      phone: rawPhone ? digitsOnly(rawPhone) : '',
+      matchTime: cm.scheduleKst,
+      stadiumName: cm.stadiumName,
+      exportCount: t.export_count,
+      messageText: `${body}\n\n▶ 추천 매치 보기: ${url}`,
+    };
+  });
+
+  res.json({ ok: true, data: { count: items.length, items } } satisfies ApiOk<{
+    count: number;
+    items: PendingMessageItem[];
+  }>);
+});
+
+const markSchema = z.object({
+  // 클라이언트가 문자열 id를 보내도 허용 (BIGSERIAL이 JSON에서 문자열일 수 있음).
+  targetIds: z.array(z.coerce.number().int().positive()).min(1).max(100_000),
+  markedBy: z.string().max(64).optional(),
+});
+
+/**
+ * POST /api/admin/export/mark — 운영자가 채널톡 발송을 완료한 대상을 'exported'로 전환.
+ * 복사(읽기)와 분리하여, 실수로 보기만 한 경우 funnel이 왜곡되지 않도록 한다.
+ */
+adminExportRouter.post('/export/mark', async (req, res) => {
+  const parsed = markSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ ok: false, error: { code: 'invalid_body', message: parsed.error.message } });
+  }
+  const { targetIds, markedBy } = parsed.data;
+
+  const upd = await query<{ id: number }>(
+    `UPDATE targets
+        SET notification_status = 'exported',
+            exported_at = NOW(),
+            export_count = export_count + 1
+      WHERE id = ANY($1::bigint[])
+        AND notification_status = 'pending'
+      RETURNING id`,
+    [targetIds],
+  );
+  for (const row of upd.rows) {
+    await insertEvent({
+      targetId: row.id,
+      eventType: 'bizm_exported',
+      metadata: { marked_by: markedBy ?? null, channel: 'channeltalk' },
+    });
+  }
+  res.json({
+    ok: true,
+    data: { marked: upd.rows.length, requested: targetIds.length },
+  } satisfies ApiOk<{ marked: number; requested: number }>);
+});

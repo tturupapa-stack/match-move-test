@@ -1,0 +1,22 @@
+# Agent Company
+node_modules/
+.env*
+!.agent-state/
+!.env.example
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+
+# Logs / coverage
+*.log
+coverage/
+.DS_Store
+
+# Agent state — keep memory but not runtime artifacts
+.agent-state/checkpoints/
+.agent-state/dead-letters/
+.agent-state/logs/
