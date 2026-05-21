@@ -3,13 +3,26 @@ import { runCollectResults } from './collect-results.js';
 import { runExtractTargets } from './extract-targets.js';
 import { runMarkNoResponse } from './mark-no-response.js';
 import { log } from '../lib/logger.js';
+import { isHourWithinWindow, loadScheduleConfig } from '../lib/schedule-config.js';
+import { kstHour } from '../lib/time.js';
 
 export function startSchedulers(): void {
-  // F-2: 매시 정각 (0-23시 KST, 전체 시간 모드). 매시 정각에 +3h 후 매치 추출.
+  // F-2: 매시 정각 발화. 실제 추출 여부는 어드민이 설정한 운영 시간대(schedule_config)로 게이트.
   cron.schedule(
     '0 * * * *',
     async () => {
       try {
+        const cfg = await loadScheduleConfig('extract-targets');
+        const hour = kstHour();
+        if (!cfg.enabled || !isHourWithinWindow(hour, cfg.startHour, cfg.endHour)) {
+          log.info('extract-targets skipped (out of window)', {
+            hour,
+            startHour: cfg.startHour,
+            endHour: cfg.endHour,
+            enabled: cfg.enabled,
+          });
+          return;
+        }
         await runExtractTargets();
       } catch (err) {
         log.error('extract-targets cron failed', {

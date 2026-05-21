@@ -1,20 +1,41 @@
 'use client';
 
 import { useState } from 'react';
-import { clientFetch, type AdminConfig, type PromotionMap } from '../lib/api';
+import { clientFetch, type AdminConfig, type AdminSchedule, type PromotionMap } from '../lib/api';
+
+const HOURS = Array.from({ length: 24 }, (_, h) => h);
 
 export function ConfigForm({
   initial,
   initialPromotionMap,
+  initialSchedule,
 }: {
   initial: AdminConfig;
   initialPromotionMap: PromotionMap;
+  initialSchedule: AdminSchedule;
 }) {
   const [low, setLow] = useState(initial.current.lowThreshold);
   const [high, setHigh] = useState(initial.current.highThreshold);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+
+  const [startHour, setStartHour] = useState(initialSchedule.current.startHour);
+  const [endHour, setEndHour] = useState(initialSchedule.current.endHour);
+  const [enabled, setEnabled] = useState(initialSchedule.current.enabled);
+
+  const saveSchedule = async () => {
+    setErr(null);
+    setSaving(true);
+    const r = await clientFetch<AdminSchedule>('/api/admin/schedule', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ startHour, endHour, enabled, changedBy: 'admin-ui' }),
+    });
+    setSaving(false);
+    if (r.ok) setSavedAt(new Date().toISOString());
+    else setErr(r.error.message);
+  };
 
   const [pm, setPm] = useState<Array<{ testType: number; amount: number }>>(() => {
     const map = new Map(initialPromotionMap.map((p) => [p.testType, p.amount]));
@@ -132,6 +153,59 @@ export function ConfigForm({
           className="mt-4 rounded-lg bg-brand px-4 py-2 text-white font-semibold disabled:opacity-50"
         >
           금액 매핑 저장
+        </button>
+      </section>
+
+      <section className="rounded-xl border border-line bg-white p-6">
+        <h2 className="text-lg font-semibold">추출 운영 시간대 (F-2)</h2>
+        <p className="mt-1 text-sm text-muted">
+          대상 추출 배치는 매시 정각에 실행됩니다. 아래 시간대(KST) 안의 정각에만 추출하며, 그 외에는 건너뜁니다.
+        </p>
+        <label className="mt-4 flex items-center gap-2">
+          <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+          <span className="text-sm">자동 추출 사용</span>
+        </label>
+        <div className="mt-4 grid grid-cols-2 gap-4">
+          <label className="block">
+            <span className="text-sm text-muted">시작 시각</span>
+            <select
+              value={startHour}
+              onChange={(e) => setStartHour(Number(e.target.value))}
+              disabled={!enabled}
+              className="mt-1 w-full rounded-lg border border-line px-3 py-2 disabled:opacity-50"
+            >
+              {HOURS.map((h) => (
+                <option key={h} value={h}>{`${String(h).padStart(2, '0')}:00`}</option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="text-sm text-muted">종료 시각</span>
+            <select
+              value={endHour}
+              onChange={(e) => setEndHour(Number(e.target.value))}
+              disabled={!enabled}
+              className="mt-1 w-full rounded-lg border border-line px-3 py-2 disabled:opacity-50"
+            >
+              {HOURS.map((h) => (
+                <option key={h} value={h}>{`${String(h).padStart(2, '0')}:00`}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <p className="mt-2 text-xs text-muted">
+          {startHour <= endHour
+            ? `매일 ${String(startHour).padStart(2, '0')}:00 ~ ${String(endHour).padStart(2, '0')}:00 정각에 추출합니다.`
+            : `매일 ${String(startHour).padStart(2, '0')}:00 ~ 익일 ${String(endHour).padStart(2, '0')}:00 정각에 추출합니다 (자정 넘김).`}
+          {' '}추출 대상은 실행 시각 기준 3시간 뒤 매치입니다.
+        </p>
+        <button
+          type="button"
+          onClick={() => void saveSchedule()}
+          disabled={saving}
+          className="mt-4 rounded-lg bg-brand px-4 py-2 text-white font-semibold disabled:opacity-50"
+        >
+          운영 시간대 저장
         </button>
       </section>
 

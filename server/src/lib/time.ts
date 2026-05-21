@@ -47,6 +47,13 @@ function toKstComponents(d: Date): {
 }
 
 /**
+ * Current hour (0-23) in KST for a given Date.
+ */
+export function kstHour(d: Date = nowUtc()): number {
+  return toKstComponents(d).h;
+}
+
+/**
  * Format a Date as KST 'YYYY-MM-DD HH:mm:ss' — the format PLAB Q1 expects for `schedule = ?`.
  */
 export function formatKstSqlDateTime(d: Date): string {
