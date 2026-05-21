@@ -142,6 +142,8 @@ export class PlabApiClient {
   }
 
   // ─── Q1: 대상 매치 추출 ───
+  // 지역 매칭 단위 = filter_area (stadium_group.filter_area_id). 세부 area보다 넓어
+  // 추천 후보 풀이 커진다. 출력 alias는 다운스트림 호환을 위해 area_id/area_name 유지.
   async q1ExtractTargetMatches(args: {
     targetSchedule: string; // 'YYYY-MM-DD HH:00:00' KST
     lowThreshold: number;
@@ -165,8 +167,8 @@ export class PlabApiClient {
         m.schedule,
         m.manager_id,
         m.stadium_id,
-        sg.area_id,
-        a.name AS area_name,
+        sg.filter_area_id AS area_id,
+        fa.name AS area_name,
         sg.name AS stadium_name,
         mgr.name AS manager_name,
         mgr.phone AS manager_phone,
@@ -175,7 +177,7 @@ export class PlabApiClient {
       FROM \`match\` m
       JOIN stadium s ON m.stadium_id = s.id
       JOIN stadium_group sg ON s.group_id = sg.id
-      LEFT JOIN area a ON sg.area_id = a.id
+      LEFT JOIN filter_area fa ON sg.filter_area_id = fa.id
       JOIN manager mgr ON m.manager_id = mgr.id
       WHERE m.status = 'release'
         AND m.manager_id IS NOT NULL
@@ -190,6 +192,8 @@ export class PlabApiClient {
   }
 
   // ─── Q2: 추천 매치 검색 ───
+  // 같은 filter_area(넓은 지역 단위) 안에서 추천 매치를 찾는다. areaId 인자엔
+  // Q1이 반환한 filter_area_id가 그대로 들어온다(이름만 area로 유지).
   async q2FindRecommendations(args: {
     targetSchedule: string;
     areaId: number;
@@ -212,7 +216,7 @@ export class PlabApiClient {
         m.schedule,
         m.stadium_id,
         sg.name AS stadium_name,
-        sg.area_id,
+        sg.filter_area_id AS area_id,
         m.manager_return,
         m.test_type,
         (SELECT COUNT(*) FROM match_apply ma
@@ -223,7 +227,7 @@ export class PlabApiClient {
       WHERE m.status = 'release'
         AND (m.manager_id IS NULL OR m.manager_id = ${UNASSIGNED_MANAGER_ID} OR m.manager_return = 1)
         AND m.schedule = ?
-        AND sg.area_id = ?
+        AND sg.filter_area_id = ?
       HAVING participant_count >= ?
     `;
     const res = await this.executeSql(sql, [args.targetSchedule, args.areaId, args.highThreshold]);
