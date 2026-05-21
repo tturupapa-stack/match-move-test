@@ -14,7 +14,7 @@ export function buildMessageBody(v: MessageVars): string {
     `${v.matchTime} ${v.stadiumName} 매치는 현재 참가자가 ${v.participantCount}명으로 진행 가능성이 낮습니다.`,
     '',
     '근처에 진행 가능성이 높은 다른 매치로 이동하실 수 있습니다.',
-    '아래 버튼을 눌러 추천 매치를 확인해주세요.',
+    '아래 링크를 눌러 추천 매치를 확인해주세요.',
     '',
     '※ 변경 가능 시간: 매치 시작 1시간 30분 전까지',
   ].join('\n');
