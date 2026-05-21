@@ -23,9 +23,10 @@ export interface SlackKeepPayload {
 }
 
 export interface SlackExtractSummaryPayload {
-  targetSchedule: string; // 대상 매치 시각 'YYYY-MM-DD HH:mm:ss'
+  targetSchedule: string; // 대상 매치 시각 'YYYY-MM-DD HH:mm:ss' (KST)
   inserted: number; // 신규 발송 대기 추가 건수
   rawCandidates: number; // Q1 후보 수
+  afterRecommendationFilter: number; // 추천 매치 있는 대상 수
   exportUrl: string; // 발송 관리 화면 URL
 }
 
@@ -84,11 +85,16 @@ export class WebhookSlackClient implements SlackClient {
   }
 
   async postExtractSummary(p: SlackExtractSummaryPayload): Promise<void> {
+    const ts = new Date().toISOString();
     const text =
-      `:mega: 매치 이동 대상자 추출 / ${new Date().toISOString()}\n\n` +
-      `대상 매치 시각: ${p.targetSchedule}\n` +
-      `신규 발송 대기: ${p.inserted}건 (검토 후보 ${p.rawCandidates}건)\n\n` +
-      `→ 발송 관리 화면에서 채널톡 발송 처리: ${p.exportUrl}`;
+      p.inserted > 0
+        ? `:mega: 매치 이동 대상자 추출 / ${ts}\n\n` +
+          `대상 매치 시각(KST): ${p.targetSchedule}\n` +
+          `신규 발송 대기: ${p.inserted}건 (Q1 후보 ${p.rawCandidates}건)\n\n` +
+          `→ 발송 관리 화면에서 채널톡 발송 처리: ${p.exportUrl}`
+        : `:mailbox_with_no_mail: 매치 이동 추출 결과 / ${ts}\n\n` +
+          `대상 매치 시각(KST): ${p.targetSchedule}\n` +
+          `발송 대상 없음 (Q1 후보 ${p.rawCandidates}건, 추천 매치 있는 대상 ${p.afterRecommendationFilter}건)`;
     await this.postRaw(text);
   }
 }

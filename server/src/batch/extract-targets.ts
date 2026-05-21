@@ -226,13 +226,14 @@ export async function runExtractTargets(ctxOverride: Partial<ExtractContext> = {
 
   log.info('extract-targets done', summary as unknown as Record<string, unknown>);
 
-  // 신규 발송 대기가 생겼을 때만 슬랙 추출 알림 (노이즈 방지). dry-run은 발송 안 함.
-  if (!dryRun && summary.inserted > 0) {
+  // dry-run이 아니면 추출 결과를 항상 슬랙에 전송 (0건도 결과로 보고).
+  if (!dryRun) {
     try {
       await ctx.slack.postExtractSummary({
         targetSchedule: summary.targetSchedule,
         inserted: summary.inserted,
         rawCandidates: summary.rawCandidates,
+        afterRecommendationFilter: summary.afterRecommendationFilter,
         exportUrl: `${ctx.publicBaseUrl.replace(/\/$/, '')}/admin/export`,
       });
     } catch (err) {
