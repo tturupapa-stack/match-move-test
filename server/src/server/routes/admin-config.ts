@@ -4,6 +4,7 @@ import { runExtractTargets } from '../../batch/extract-targets.js';
 import { query } from '../../lib/db.js';
 import type {
   AdminConfig,
+  AdminSchedule,
   ApiOk,
   ManualExtractResult,
   PromotionMap,
@@ -62,6 +63,57 @@ adminConfigRouter.put('/config', async (req, res) => {
       current: { lowThreshold: parsed.data.lowThreshold, highThreshold: parsed.data.highThreshold },
       history: [],
     } satisfies AdminConfig,
+  });
+});
+
+// === extract-targets 운영 시간대 ===
+const scheduleUpdateSchema = z.object({
+  startHour: z.number().int().min(0).max(23),
+  endHour: z.number().int().min(0).max(23),
+  enabled: z.boolean(),
+  changedBy: z.string().max(64).optional(),
+});
+
+adminConfigRouter.get('/schedule', async (_req, res) => {
+  const r = await query<{
+    start_hour: number;
+    end_hour: number;
+    enabled: boolean;
+    changed_by: string | null;
+    changed_at: string;
+  }>(
+    `SELECT start_hour, end_hour, enabled, changed_by, changed_at::text
+       FROM schedule_config WHERE job_name = 'extract-targets' ORDER BY id DESC LIMIT 50`,
+  );
+  const history = r.rows.map((row) => ({
+    startHour: row.start_hour,
+    endHour: row.end_hour,
+    enabled: row.enabled,
+    changedBy: row.changed_by,
+    changedAt: row.changed_at,
+  }));
+  const current = history[0] ?? { startHour: 0, endHour: 23, enabled: true };
+  const data: AdminSchedule = {
+    current: { startHour: current.startHour, endHour: current.endHour, enabled: current.enabled },
+    history,
+  };
+  res.json({ ok: true, data } satisfies ApiOk<AdminSchedule>);
+});
+
+adminConfigRouter.put('/schedule', async (req, res) => {
+  const parsed = scheduleUpdateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ ok: false, error: { code: 'invalid_body', message: parsed.error.message } });
+  }
+  const { startHour, endHour, enabled, changedBy } = parsed.data;
+  await query(
+    `INSERT INTO schedule_config (job_name, start_hour, end_hour, enabled, changed_by)
+     VALUES ('extract-targets', $1, $2, $3, $4)`,
+    [startHour, endHour, enabled, changedBy ?? null],
+  );
+  res.json({
+    ok: true,
+    data: { current: { startHour, endHour, enabled }, history: [] } satisfies AdminSchedule,
   });
 });
 

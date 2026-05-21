@@ -62,6 +62,26 @@ export type AdminConfigUpdateBody = {
   changedBy?: string;
 };
 
+// === Admin schedule (extract-targets 운영 시간대) ===
+// 매시 정각 발화 중 startHour~endHour(KST, 양끝 포함)에만 추출.
+// startHour > endHour면 자정 넘김(예: 22~6). enabled=false면 추출 중지.
+export type AdminSchedule = {
+  current: { startHour: number; endHour: number; enabled: boolean };
+  history: Array<{
+    startHour: number;
+    endHour: number;
+    enabled: boolean;
+    changedBy: string | null;
+    changedAt: string; // ISO8601
+  }>;
+};
+export type AdminScheduleUpdateBody = {
+  startHour: number;
+  endHour: number;
+  enabled: boolean;
+  changedBy?: string;
+};
+
 // === Promotion map ===
 export type PromotionMapEntry = {
   testType: number;
