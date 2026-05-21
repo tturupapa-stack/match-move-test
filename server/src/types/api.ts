@@ -111,6 +111,11 @@ export type StatsReport = {
 };
 
 // === GET /api/admin/export/history — 발송 완료/대상 제외 개별 이력 ===
+// 대상의 진행 단계(토글 상세에서 타임라인으로 표시).
+export type ExportHistoryTimelineStep = {
+  eventType: EventType;
+  occurredKst: string; // 'YYYY-MM-DD HH:mm' (KST)
+};
 export type ExportHistoryItem = {
   id: number; // event_log.id
   status: 'exported' | 'excluded'; // bizm_exported | bizm_excluded
@@ -120,6 +125,12 @@ export type ExportHistoryItem = {
   matchTime: string | null; // 현재 매치 시각 (current_match_info.scheduleKst)
   stadiumName: string | null;
   operator: string | null; // 처리자 (marked_by | excluded_by)
+  // ── 토글 상세 ──
+  participantCount: number | null; // 현재 매치 참가자 수
+  exportCount: number | null; // 누적 발송 횟수
+  notificationStatus: string | null; // 대상의 현재 상태 (pending/exported/excluded)
+  recommended: RecommendedMatch[]; // 발송 당시 추천받은 매치 (관리자 전용: 양도/프로모션 포함)
+  timeline: ExportHistoryTimelineStep[]; // 대상의 이벤트 진행 (시간순)
 };
 export type ExportHistoryReport = {
   range: { from: string; to: string };
