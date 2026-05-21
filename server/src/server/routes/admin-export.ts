@@ -9,6 +9,7 @@ import { log } from '../../lib/logger.js';
 import type {
   ApiOk,
   CurrentMatch,
+  EventType,
   ExportHistoryItem,
   ExportHistoryReport,
   RecommendedMatch,
@@ -192,6 +193,10 @@ interface HistoryRow {
   match_time: string | null;
   stadium_name: string | null;
   operator: string | null;
+  participant_count: number | null;
+  export_count: number | null;
+  notification_status: string | null;
+  recommended_matches: RecommendedMatch[] | null;
 }
 
 /**
@@ -214,6 +219,10 @@ adminExportRouter.get('/export/history', async (req, res) => {
         t.manager_name,
         t.current_match_info->>'scheduleKst' AS match_time,
         t.current_match_info->>'stadiumName' AS stadium_name,
+        (t.current_match_info->>'participantCount')::int AS participant_count,
+        t.export_count,
+        t.notification_status,
+        t.recommended_matches,
         COALESCE(e.metadata->>'marked_by', e.metadata->>'excluded_by') AS operator
        FROM event_log e
        LEFT JOIN targets t ON t.id = e.target_id
@@ -223,6 +232,26 @@ adminExportRouter.get('/export/history', async (req, res) => {
       LIMIT $3`,
     [from, to, limit],
   );
+
+  // 토글 상세용 타임라인: 위 목록에 등장한 대상들의 모든 이벤트를 한 번에 조회해 그룹핑.
+  const targetIds = [...new Set(rowsRes.rows.map((r) => r.target_id).filter((id): id is number => id != null))];
+  const timelineMap = new Map<number, ExportHistoryItem['timeline']>();
+  if (targetIds.length > 0) {
+    const tlRes = await query<{ target_id: number; event_type: EventType; occurred_kst: string }>(
+      `SELECT target_id, event_type,
+              to_char(occurred_at AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD HH24:MI') AS occurred_kst
+         FROM event_log
+        WHERE target_id = ANY($1::bigint[])
+        ORDER BY occurred_at ASC, id ASC`,
+      [targetIds],
+    );
+    for (const r of tlRes.rows) {
+      const tid = Number(r.target_id);
+      const list = timelineMap.get(tid) ?? [];
+      list.push({ eventType: r.event_type, occurredKst: r.occurred_kst });
+      timelineMap.set(tid, list);
+    }
+  }
 
   // 카운트는 limit과 무관하게 기간 전체 기준으로 집계.
   const countRes = await query<{ event_type: string; n: string }>(
@@ -244,6 +273,11 @@ adminExportRouter.get('/export/history', async (req, res) => {
     matchTime: r.match_time,
     stadiumName: r.stadium_name,
     operator: r.operator,
+    participantCount: r.participant_count != null ? Number(r.participant_count) : null,
+    exportCount: r.export_count != null ? Number(r.export_count) : null,
+    notificationStatus: r.notification_status,
+    recommended: r.recommended_matches ?? [],
+    timeline: r.target_id != null ? timelineMap.get(Number(r.target_id)) ?? [] : [],
   }));
 
   const data: ExportHistoryReport = {
