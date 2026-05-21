@@ -201,7 +201,11 @@ export async function runExtractTargets(ctxOverride: Partial<ExtractContext> = {
         const row = ins.rows[0];
         if (!row) return null;
         // Now compute the real HMAC token referencing the row id.
-        const realToken = makeToken({ tid: row.id, exp: tokenExpiry.toISOString() }, ctx.hmacSecret);
+        // BIGSERIAL id는 pg가 문자열로 반환 → 토큰 payload의 tid(number)로 정규화 (verifyToken 호환).
+        const realToken = makeToken(
+          { tid: Number(row.id), exp: tokenExpiry.toISOString() },
+          ctx.hmacSecret,
+        );
         await client.query(`UPDATE targets SET token = $1 WHERE id = $2`, [realToken, row.id]);
         return row.id;
       });
