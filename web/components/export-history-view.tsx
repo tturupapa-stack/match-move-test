@@ -1,6 +1,7 @@
 'use client';
 
 import { Fragment, useState } from 'react';
+import { clientFetch } from '../lib/api';
 import type { EventType, ExportHistoryItem, ExportHistoryReport } from '@shared/api';
 
 const EVENT_LABELS: Record<EventType, string> = {
@@ -86,12 +87,142 @@ function DetailRow({ item }: { item: ExportHistoryItem }) {
   );
 }
 
-export function ExportHistoryView({ report }: { report: ExportHistoryReport }) {
-  const { items, exportedCount, excludedCount } = report;
+// occurredKst('YYYY-MM-DD HH:mm')에서 날짜 부분만.
+function dayKey(occurredKst: string): string {
+  return occurredKst.slice(0, 10);
+}
+
+// 로컬(브라우저) 기준 'YYYY-MM-DD' — date input value 형식.
+function toLocalYmd(d: Date): string {
+  return d.toLocaleDateString('sv-SE'); // 'YYYY-MM-DD' (sv-SE 로케일 보장)
+}
+
+// 'YYYY-MM-DD' → KST 00:00 또는 23:59:59의 ISO UTC.
+function ymdToKstIso(ymd: string, endOfDay = false): string {
+  const time = endOfDay ? '23:59:59' : '00:00:00';
+  return new Date(`${ymd}T${time}+09:00`).toISOString();
+}
+
+export function ExportHistoryView({ report: initial }: { report: ExportHistoryReport }) {
+  const todayYmd = toLocalYmd(new Date());
+  const weekAgoYmd = toLocalYmd(new Date(Date.now() - 6 * 86400_000));
+  const [from, setFrom] = useState(weekAgoYmd);
+  const [to, setTo] = useState(todayYmd);
+  const [statusFilter, setStatusFilter] = useState<'all' | 'exported' | 'excluded'>('all');
+  const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc'); // 처리 시각 정렬
+  const [data, setData] = useState(initial);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
   const [openId, setOpenId] = useState<number | null>(null);
+
+  const apply = async () => {
+    if (from > to) {
+      setErr('시작일이 종료일보다 클 수 없습니다.');
+      return;
+    }
+    setLoading(true);
+    setErr(null);
+    const fromIso = ymdToKstIso(from, false);
+    const toIso = ymdToKstIso(to, true);
+    const q = `?from=${encodeURIComponent(fromIso)}&to=${encodeURIComponent(toIso)}`;
+    const r = await clientFetch<ExportHistoryReport>(`/api/admin/export/history${q}`);
+    setLoading(false);
+    if (r.ok) setData(r.data);
+    else setErr(r.error.message);
+  };
+
+  const setQuickRange = (days: number) => {
+    setTo(todayYmd);
+    setFrom(toLocalYmd(new Date(Date.now() - (days - 1) * 86400_000)));
+  };
+
+  const { items, exportedCount, excludedCount } = data;
+
+  // 상태 필터 + 정렬을 클라이언트에서 적용 (server는 from/to만 필터).
+  const filtered = items
+    .filter((it) => (statusFilter === 'all' ? true : it.status === statusFilter))
+    .sort((a, b) =>
+      sortOrder === 'desc' ? b.occurredKst.localeCompare(a.occurredKst) : a.occurredKst.localeCompare(b.occurredKst),
+    );
 
   return (
     <div className="space-y-6">
+      <section className="rounded-xl border border-line bg-white p-6">
+        <h2 className="text-lg font-semibold">기간 필터</h2>
+        <div className="mt-3 flex flex-wrap items-end gap-3">
+          <label className="block">
+            <span className="block text-xs text-muted">시작일</span>
+            <input
+              type="date"
+              value={from}
+              max={to}
+              onChange={(e) => setFrom(e.target.value)}
+              className="mt-1 rounded-lg border border-line px-3 py-1.5"
+            />
+          </label>
+          <label className="block">
+            <span className="block text-xs text-muted">종료일</span>
+            <input
+              type="date"
+              value={to}
+              min={from}
+              max={todayYmd}
+              onChange={(e) => setTo(e.target.value)}
+              className="mt-1 rounded-lg border border-line px-3 py-1.5"
+            />
+          </label>
+          <label className="block">
+            <span className="block text-xs text-muted">상태</span>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as 'all' | 'exported' | 'excluded')}
+              className="mt-1 rounded-lg border border-line px-3 py-1.5"
+            >
+              <option value="all">전체</option>
+              <option value="exported">발송 완료</option>
+              <option value="excluded">대상 제외</option>
+            </select>
+          </label>
+          <label className="block">
+            <span className="block text-xs text-muted">정렬</span>
+            <select
+              value={sortOrder}
+              onChange={(e) => setSortOrder(e.target.value as 'desc' | 'asc')}
+              className="mt-1 rounded-lg border border-line px-3 py-1.5"
+            >
+              <option value="desc">최신순</option>
+              <option value="asc">오래된순</option>
+            </select>
+          </label>
+          <button
+            type="button"
+            onClick={apply}
+            disabled={loading}
+            className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-40"
+          >
+            {loading ? '조회 중…' : '적용'}
+          </button>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2 text-xs">
+          <span className="text-muted">빠른 선택:</span>
+          {[
+            { label: '오늘', d: 1 },
+            { label: '7일', d: 7 },
+            { label: '30일', d: 30 },
+          ].map((q) => (
+            <button
+              key={q.d}
+              type="button"
+              onClick={() => setQuickRange(q.d)}
+              className="rounded border border-line px-2 py-0.5 hover:bg-surface"
+            >
+              {q.label}
+            </button>
+          ))}
+        </div>
+        {err && <p className="mt-3 text-sm text-danger">{err}</p>}
+      </section>
+
       <section className="rounded-xl border border-line bg-white p-6">
         <h2 className="text-lg font-semibold">발송/제외 집계</h2>
         <dl className="mt-3 flex gap-8 text-sm">
@@ -103,13 +234,17 @@ export function ExportHistoryView({ report }: { report: ExportHistoryReport }) {
             <dt className="text-muted">대상 제외</dt>
             <dd className="text-2xl font-bold tabular-nums text-danger">{excludedCount}</dd>
           </div>
+          <div>
+            <dt className="text-muted">표시 중</dt>
+            <dd className="text-2xl font-bold tabular-nums">{filtered.length}</dd>
+          </div>
         </dl>
       </section>
 
       <section className="rounded-xl border border-line bg-white p-6">
         <h2 className="text-lg font-semibold">처리 이력</h2>
         <p className="mt-1 text-xs text-muted">행을 클릭하면 추천 매치·진행 타임라인 등 상세를 볼 수 있습니다.</p>
-        {items.length > 0 ? (
+        {filtered.length > 0 ? (
           <table className="mt-4 w-full text-sm">
             <thead className="text-left text-muted">
               <tr className="border-b border-line">
@@ -122,10 +257,19 @@ export function ExportHistoryView({ report }: { report: ExportHistoryReport }) {
               </tr>
             </thead>
             <tbody>
-              {items.map((it) => {
+              {filtered.map((it, idx) => {
                 const open = openId === it.id;
+                const prev = filtered[idx - 1];
+                const showDayHeader = !prev || dayKey(prev.occurredKst) !== dayKey(it.occurredKst);
                 return (
                   <Fragment key={it.id}>
+                    {showDayHeader && (
+                      <tr className="bg-surface">
+                        <td colSpan={6} className="py-1.5 px-2 text-xs font-semibold tabular-nums text-muted">
+                          {dayKey(it.occurredKst)}
+                        </td>
+                      </tr>
+                    )}
                     <tr
                       onClick={() => setOpenId(open ? null : it.id)}
                       className="cursor-pointer border-b border-line hover:bg-surface"
@@ -152,7 +296,7 @@ export function ExportHistoryView({ report }: { report: ExportHistoryReport }) {
             </tbody>
           </table>
         ) : (
-          <p className="mt-4 text-sm text-muted">기간 내 발송/제외 이력이 없습니다.</p>
+          <p className="mt-4 text-sm text-muted">기간/조건에 맞는 이력이 없습니다.</p>
         )}
       </section>
     </div>
