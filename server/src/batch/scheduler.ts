@@ -1,5 +1,6 @@
 import cron from 'node-cron';
 import { runCollectResults } from './collect-results.js';
+import { runExpirePendingTargets } from './expire-pending-targets.js';
 import { runExtractTargets } from './extract-targets.js';
 import { runMarkNoResponse } from './mark-no-response.js';
 import { log } from '../lib/logger.js';
@@ -72,6 +73,25 @@ export function startSchedulers(): void {
       timezone: 'Asia/Seoul',
       noOverlap: true,
       name: 'mark-no-response',
+    },
+  );
+
+  // 매 5분마다 pending(미발송) 중 발송 마감 지난 대상을 자동으로 'excluded'로 정리.
+  cron.schedule(
+    '*/5 * * * *',
+    async () => {
+      try {
+        await runExpirePendingTargets();
+      } catch (err) {
+        log.error('expire-pending cron failed', {
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
+    },
+    {
+      timezone: 'Asia/Seoul',
+      noOverlap: true,
+      name: 'expire-pending',
     },
   );
 
