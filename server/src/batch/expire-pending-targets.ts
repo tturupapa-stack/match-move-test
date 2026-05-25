@@ -28,7 +28,8 @@ export async function runExpirePendingTargets(
     [cutoff.toISOString()],
   );
 
-  if (res.rowCount === 0) return { excluded: 0 };
+  const excluded = res.rows.length; // pg rowCount는 number|null 이므로 rows.length 사용.
+  if (excluded === 0) return { excluded: 0 };
 
   for (const row of res.rows) {
     try {
@@ -44,6 +45,6 @@ export async function runExpirePendingTargets(
       });
     }
   }
-  log.info('expire-pending done', { excluded: res.rowCount });
-  return { excluded: res.rowCount };
+  log.info('expire-pending done', { excluded });
+  return { excluded };
 }
