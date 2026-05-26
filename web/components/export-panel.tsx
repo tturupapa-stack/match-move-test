@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { clientFetch } from '../lib/api';
+import { formatStadium } from '../lib/format';
 import type { RecommendedMatch } from '@shared/api';
 import { GradeBadge } from './grade-badge';
 
@@ -11,6 +12,7 @@ export interface PendingItem {
   phone: string;
   matchTime: string | null;
   stadiumName: string | null;
+  fieldName: string | null;
   currentGrade: number | null;
   exportCount: number;
   messageText: string;
@@ -162,7 +164,7 @@ export function ExportPanel({ initial }: { initial: PendingData }) {
                 </div>
                 <div className="flex items-center gap-2 text-sm text-muted">
                   <span>
-                    {it.matchTime} · {it.stadiumName}
+                    {it.matchTime} · {formatStadium(it.stadiumName, it.fieldName)}
                   </span>
                   <GradeBadge grade={it.currentGrade} size="xs" />
                 </div>
@@ -182,7 +184,7 @@ export function ExportPanel({ initial }: { initial: PendingData }) {
                       <li key={r.matchId} className="flex items-center justify-between gap-2">
                         <span className="flex items-center gap-2">
                           <span>
-                            {r.scheduleKst} · {r.stadiumName} (참가자 {r.participantCount})
+                            {r.scheduleKst} · {formatStadium(r.stadiumName, r.fieldName)} (참가자 {r.participantCount})
                           </span>
                           <GradeBadge grade={r.grade} size="xs" />
                         </span>

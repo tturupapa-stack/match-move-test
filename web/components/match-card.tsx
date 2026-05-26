@@ -1,4 +1,5 @@
 import type { CurrentMatch, RecommendedMatchPublic } from '@shared/api';
+import { formatStadium } from '../lib/format';
 import { GradeBadge } from './grade-badge';
 
 export function CurrentMatchCard({ m }: { m: CurrentMatch }) {
@@ -8,7 +9,7 @@ export function CurrentMatchCard({ m }: { m: CurrentMatch }) {
         <div className="text-xs uppercase tracking-wide text-muted">현재 매치</div>
         <GradeBadge grade={m.grade} />
       </div>
-      <div className="mt-2 text-lg font-semibold">{m.stadiumName}</div>
+      <div className="mt-2 text-lg font-semibold">{formatStadium(m.stadiumName, m.fieldName)}</div>
       {m.areaName ? <div className="mt-0.5 text-xs text-muted">{m.areaName}</div> : null}
       <div className="mt-1 text-sm text-muted">{m.scheduleKst}</div>
       <div className="mt-3 text-sm">
@@ -38,7 +39,7 @@ export function RecommendedMatchCard({
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <div className="text-base font-semibold">{m.stadiumName}</div>
+            <div className="text-base font-semibold">{formatStadium(m.stadiumName, m.fieldName)}</div>
             <GradeBadge grade={m.grade} size="xs" />
           </div>
           <div className="text-sm text-muted">{m.scheduleKst}</div>

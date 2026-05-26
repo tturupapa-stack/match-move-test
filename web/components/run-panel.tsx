@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { clientFetch, type ManualExtractResult } from '../lib/api';
+import { formatStadium } from '../lib/format';
 import { GradeBadge } from './grade-badge';
 
 export function RunPanel() {
@@ -170,7 +171,7 @@ export function RunPanel() {
                     <td className="py-2">{p.managerName ?? '-'}</td>
                     <td className="py-2">
                       <span className="inline-flex items-center gap-2">
-                        {p.current.scheduleKst} · {p.current.stadiumName}
+                        {p.current.scheduleKst} · {formatStadium(p.current.stadiumName, p.current.fieldName)}
                         <GradeBadge grade={p.current.grade} size="xs" />
                       </span>
                     </td>

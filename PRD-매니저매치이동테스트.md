@@ -494,6 +494,7 @@ T-12 (리포트) ────── 데이터 누적 후
 ### `plab.stadium`
 - `id` (int, PK)
 - `group_id` (int) — stadium_group.id 참조
+- `name` (varchar) — 개별 면 이름 (예: '1구장', '메인구장'). UI엔 stadium_group.name과 공백 결합해 표시 (예: '구리 아천 스타디움 1구장')
 
 ### `plab.stadium_group`
 - `id` (int, PK)

@@ -5,6 +5,7 @@ import { UNASSIGNED_MANAGER_ID } from '../../lib/constants.js';
 import { query } from '../../lib/db.js';
 import { hasAnyEvent, insertEvent } from '../../lib/event-log.js';
 import { log } from '../../lib/logger.js';
+import { formatStadium } from '../../lib/message-builder.js';
 import { createPlabClient } from '../../lib/plab-api-client.js';
 import { createSlackClient } from '../../lib/slack-client.js';
 import { verifyToken } from '../../lib/token.js';
@@ -121,6 +122,7 @@ matchMoveRouter.get('/state', async (req, res) => {
         matchId: r.matchId,
         scheduleKst: r.scheduleKst,
         stadiumName: r.stadiumName,
+        fieldName: r.fieldName ?? null,
         participantCount: r.participantCount,
       })),
     },
@@ -257,13 +259,13 @@ matchMoveRouter.post('/action', async (req, res) => {
       managerName: target.manager_name ?? `manager_${target.manager_id}`,
       managerId: target.manager_id,
       current: {
-        stadium: target.current_match_info.stadiumName,
+        stadium: formatStadium(target.current_match_info.stadiumName, target.current_match_info.fieldName),
         scheduleKst: target.current_match_info.scheduleKst,
         participants: target.current_match_info.participantCount,
       },
       selected: {
         matchId: selected.matchId,
-        stadium: selected.stadiumName,
+        stadium: formatStadium(selected.stadiumName, selected.fieldName),
         scheduleKst: selected.scheduleKst,
         participants: selected.participantCount,
         isTransferOrigin,

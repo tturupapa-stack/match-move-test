@@ -7,7 +7,8 @@ export type ApiResult<T> = ApiOk<T> | ApiErr;
 export type CurrentMatch = {
   matchId: number;
   scheduleKst: string; // 'YYYY-MM-DD HH:mm'
-  stadiumName: string;
+  stadiumName: string; // plab.stadium_group.name (예: '구리 아천 스타디움')
+  fieldName?: string | null; // plab.stadium.name = 개별 면 (예: '1구장'). 구버전 데이터엔 없을 수 있음.
   participantCount: number;
   areaId?: number; // 지역구 식별 (plab.area.id). 구버전 데이터엔 없을 수 있음.
   areaName?: string | null; // 지역구 이름 (plab.area.name)
@@ -18,6 +19,7 @@ export type RecommendedMatch = {
   matchId: number;
   scheduleKst: string;
   stadiumName: string;
+  fieldName?: string | null; // plab.stadium.name = 개별 면. 구버전 데이터엔 없을 수 있음.
   participantCount: number;
   isTransferOrigin: boolean; // manager_return = 1
   isPromotion: boolean; // test_type IN (3,6,7,8,9)
@@ -189,6 +191,7 @@ export type ExportHistoryItem = {
   managerName: string | null;
   matchTime: string | null; // 현재 매치 시각 (current_match_info.scheduleKst)
   stadiumName: string | null;
+  fieldName: string | null; // 현재 매치 면 (구버전 대상은 null)
   currentGrade: number | null; // 현재 매치 등급 (구버전 대상은 null)
   operator: string | null; // 처리자 (marked_by | excluded_by)
   // ── 토글 상세 ──

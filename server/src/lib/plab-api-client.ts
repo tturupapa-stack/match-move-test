@@ -156,6 +156,7 @@ export class PlabApiClient {
       area_id: number;
       area_name: string | null;
       stadium_name: string;
+      field_name: string | null;
       manager_name: string;
       manager_phone: string;
       participant_count: number;
@@ -172,6 +173,7 @@ export class PlabApiClient {
         sg.filter_area_id AS area_id,
         fa.name AS area_name,
         sg.name AS stadium_name,
+        s.name AS field_name,
         mgr.name AS manager_name,
         mgr.phone AS manager_phone,
         (SELECT COUNT(*) FROM match_apply ma
@@ -206,6 +208,7 @@ export class PlabApiClient {
       schedule: string;
       stadium_id: number;
       stadium_name: string;
+      field_name: string | null;
       area_id: number;
       manager_return: number;
       test_type: number | null;
@@ -220,6 +223,7 @@ export class PlabApiClient {
         m.stadium_id,
         m.grade,
         sg.name AS stadium_name,
+        s.name AS field_name,
         sg.filter_area_id AS area_id,
         m.manager_return,
         m.test_type,

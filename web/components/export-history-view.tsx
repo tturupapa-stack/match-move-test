@@ -2,6 +2,7 @@
 
 import { Fragment, useState } from 'react';
 import { clientFetch } from '../lib/api';
+import { formatStadium } from '../lib/format';
 import type { EventType, ExportHistoryItem, ExportHistoryReport } from '@shared/api';
 import { GradeBadge, formatGrade } from './grade-badge';
 
@@ -33,7 +34,10 @@ function DetailRow({ item }: { item: ExportHistoryItem }) {
         <div>
           <h4 className="text-xs font-semibold text-muted">현재 매치</h4>
           <ul className="mt-1 space-y-0.5 text-sm">
-            <li>시각 · 경기장: {item.matchTime ?? '—'}{item.stadiumName ? ` · ${item.stadiumName}` : ''}</li>
+            <li>
+              시각 · 경기장: {item.matchTime ?? '—'}
+              {item.stadiumName ? ` · ${formatStadium(item.stadiumName, item.fieldName)}` : ''}
+            </li>
             <li>등급: {formatGrade(item.currentGrade)}</li>
             <li>참가자 수: {item.participantCount ?? '—'}</li>
             <li>대상 #: {item.targetId ?? '—'}</li>
@@ -68,7 +72,7 @@ function DetailRow({ item }: { item: ExportHistoryItem }) {
                 <li key={r.matchId} className="flex items-center justify-between gap-2">
                   <span className="flex items-center gap-2">
                     <span>
-                      {r.scheduleKst} · {r.stadiumName} (참가자 {r.participantCount})
+                      {r.scheduleKst} · {formatStadium(r.stadiumName, r.fieldName)} (참가자 {r.participantCount})
                     </span>
                     <GradeBadge grade={r.grade} size="xs" />
                   </span>
@@ -287,7 +291,11 @@ export function ExportHistoryView({ report: initial }: { report: ExportHistoryRe
                       <td className="py-2">{it.managerName ?? `대상 #${it.targetId ?? '?'}`}</td>
                       <td className="py-2 text-muted">
                         <span className="inline-flex items-center gap-2">
-                          {it.matchTime ? `${it.matchTime}${it.stadiumName ? ` · ${it.stadiumName}` : ''}` : '—'}
+                          {it.matchTime
+                            ? `${it.matchTime}${
+                                it.stadiumName ? ` · ${formatStadium(it.stadiumName, it.fieldName)}` : ''
+                              }`
+                            : '—'}
                           <GradeBadge grade={it.currentGrade} size="xs" />
                         </span>
                       </td>
