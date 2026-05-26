@@ -303,6 +303,22 @@ export class PlabApiClient {
     return res.rows as never;
   }
 
+  // ─── 매치 면 이름 일괄 조회 (백필용) ───
+  // 구버전 추출분 jsonb엔 stadium.name(개별 면)이 비어 있어 관리자 화면에서 면 번호가 표시되지 않는다.
+  // 이 메서드로 한 번에 다시 가져와 targets.current_match_info / recommended_matches를 보강한다.
+  async qFieldNames(matchIds: number[]): Promise<Array<{ id: number; field_name: string | null }>> {
+    if (matchIds.length === 0) return [];
+    const placeholders = matchIds.map(() => '?').join(', ');
+    const sql = `
+      SELECT m.id, s.name AS field_name
+        FROM \`match\` m
+        JOIN stadium s ON m.stadium_id = s.id
+       WHERE m.id IN (${placeholders})
+    `;
+    const res = await this.executeSql<{ id: number; field_name: string | null }>(sql, matchIds);
+    return res.rows;
+  }
+
   // ─── 매니저 연락처 조회 (엑셀 발송 시점에만 호출, 자체 DB 미저장 — PRD §5.2) ───
   async qManagerPhones(managerIds: number[]): Promise<Array<{ id: number; phone: string }>> {
     if (managerIds.length === 0) return [];
