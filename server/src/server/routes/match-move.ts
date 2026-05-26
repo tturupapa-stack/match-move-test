@@ -106,18 +106,23 @@ matchMoveRouter.get('/state', async (req, res) => {
     liveRecs = recs;
   }
 
+  // 매니저에게 노출되는 current는 등급(grade)을 제거한 공개 페이로드만 반환.
+  // 통째 반환하면 jsonb에 저장된 grade가 클라이언트(브라우저 inspect)로 노출됨.
+  const { grade: _omitCurrentGrade, ...currentPublic } = target.current_match_info;
+  void _omitCurrentGrade;
+
   if (liveRecs.length === 0) {
     return res.json({
       ok: true,
-      data: { status: 'no_recommendations', current: target.current_match_info },
+      data: { status: 'no_recommendations', current: currentPublic },
     } satisfies ApiOk<MatchMoveState>);
   }
   return res.json({
     ok: true,
     data: {
       status: 'ok',
-      current: target.current_match_info,
-      // 매니저에게는 양도/프로모션 여부를 노출하지 않는다 (관리자 전용 정보).
+      current: currentPublic,
+      // 매니저에게는 양도/프로모션 여부 + 매치 등급을 노출하지 않는다 (관리자 전용 정보).
       recommendations: liveRecs.map((r) => ({
         matchId: r.matchId,
         scheduleKst: r.scheduleKst,

@@ -1,14 +1,12 @@
-import type { CurrentMatch, RecommendedMatchPublic } from '@shared/api';
+// 매니저(추천 페이지)에 노출되는 매치 카드.
+// 등급(grade)·양도/프로모션 여부는 의도적으로 표시하지 않는다 — 관리자 전용 정보.
+import type { CurrentMatchPublic, RecommendedMatchPublic } from '@shared/api';
 import { formatStadium } from '../lib/format';
-import { GradeBadge } from './grade-badge';
 
-export function CurrentMatchCard({ m }: { m: CurrentMatch }) {
+export function CurrentMatchCard({ m }: { m: CurrentMatchPublic }) {
   return (
     <div className="rounded-xl border border-line bg-white p-5">
-      <div className="flex items-center justify-between">
-        <div className="text-xs uppercase tracking-wide text-muted">현재 매치</div>
-        <GradeBadge grade={m.grade} />
-      </div>
+      <div className="text-xs uppercase tracking-wide text-muted">현재 매치</div>
       <div className="mt-2 text-lg font-semibold">{formatStadium(m.stadiumName, m.fieldName)}</div>
       {m.areaName ? <div className="mt-0.5 text-xs text-muted">{m.areaName}</div> : null}
       <div className="mt-1 text-sm text-muted">{m.scheduleKst}</div>
@@ -38,10 +36,7 @@ export function RecommendedMatchCard({
     >
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <div className="text-base font-semibold">{formatStadium(m.stadiumName, m.fieldName)}</div>
-            <GradeBadge grade={m.grade} size="xs" />
-          </div>
+          <div className="text-base font-semibold">{formatStadium(m.stadiumName, m.fieldName)}</div>
           <div className="text-sm text-muted">{m.scheduleKst}</div>
         </div>
         <div className="text-right text-sm shrink-0">

@@ -26,13 +26,15 @@ export type RecommendedMatch = {
   grade?: number | null; // 매치 등급 (plab.match.grade). NULL=미분류.
 };
 
-// 매니저(추천 페이지)에게 노출되는 추천 매치 — 양도/프로모션 여부는 숨긴다 (관리자 전용 정보).
-export type RecommendedMatchPublic = Omit<RecommendedMatch, 'isTransferOrigin' | 'isPromotion'>;
+// 매니저(추천 페이지)에게 노출되는 매치 페이로드 —
+// 양도/프로모션 여부와 매치 등급(grade)은 관리자 전용이므로 응답에서 제외한다.
+export type RecommendedMatchPublic = Omit<RecommendedMatch, 'isTransferOrigin' | 'isPromotion' | 'grade'>;
+export type CurrentMatchPublic = Omit<CurrentMatch, 'grade'>;
 
 // === GET /api/match-move/state ===
 export type MatchMoveState =
-  | { status: 'ok'; current: CurrentMatch; recommendations: RecommendedMatchPublic[] }
-  | { status: 'no_recommendations'; current: CurrentMatch }
+  | { status: 'ok'; current: CurrentMatchPublic; recommendations: RecommendedMatchPublic[] }
+  | { status: 'no_recommendations'; current: CurrentMatchPublic }
   | { status: 'already_actioned' }
   | { status: 'deadline_passed' }
   | { status: 'invalid_token' };
