@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import { clientFetch } from '../lib/api';
-import type { ReportBucket, StatsBucketRow, StatsReport } from '@shared/api';
+import type { ReportBucket, StatsBucketRow, StatsGradeRow, StatsReport } from '@shared/api';
+import { formatGrade } from './grade-badge';
 
 type BucketChoice = 'none' | ReportBucket;
 
@@ -12,6 +13,65 @@ function toLocalYmd(d: Date): string {
 function ymdToKstIso(ymd: string, endOfDay = false): string {
   const time = endOfDay ? '23:59:59' : '00:00:00';
   return new Date(`${ymd}T${time}+09:00`).toISOString();
+}
+
+function GradeDistribution({
+  title,
+  rows,
+  unitLabel,
+  barClass,
+  emptyText,
+}: {
+  title: string;
+  rows: StatsGradeRow[];
+  unitLabel: string; // '대상' | '추천'
+  barClass: string;
+  emptyText: string;
+}) {
+  const total = rows.reduce((s, r) => s + r.count, 0);
+  const max = Math.max(1, ...rows.map((r) => r.count));
+  return (
+    <div>
+      <div className="flex items-baseline justify-between">
+        <h3 className="text-sm font-semibold">{title}</h3>
+        <span className="text-xs text-muted">
+          총 {total.toLocaleString()} {unitLabel}
+        </span>
+      </div>
+      {rows.length > 0 ? (
+        <table className="mt-2 w-full text-sm">
+          <thead className="text-left text-muted">
+            <tr>
+              <th className="py-1">등급</th>
+              <th className="py-1 text-right">건수</th>
+              <th className="py-1 pl-4">분포</th>
+              <th className="py-1 text-right">비중</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => {
+              const pct = total === 0 ? 0 : (r.count / total) * 100;
+              return (
+                <tr key={`${r.grade ?? 'null'}`} className="border-t border-line">
+                  <td className="py-2">{formatGrade(r.grade)}</td>
+                  <td className="py-2 text-right tabular-nums">{r.count.toLocaleString()}</td>
+                  <td className="py-2 pl-4">
+                    <div
+                      className={`h-2.5 rounded ${barClass}`}
+                      style={{ width: `${(r.count / max) * 100}%` }}
+                    />
+                  </td>
+                  <td className="py-2 text-right tabular-nums text-muted">{pct.toFixed(1)}%</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      ) : (
+        <p className="mt-2 text-sm text-muted">{emptyText}</p>
+      )}
+    </div>
+  );
 }
 
 function SeriesTable({ series, bucket }: { series: StatsBucketRow[]; bucket: ReportBucket }) {
@@ -81,7 +141,7 @@ export function StatsView({ report: initial }: { report: StatsReport }) {
     setFrom(toLocalYmd(new Date(Date.now() - (days - 1) * 86400_000)));
   };
 
-  const { recommended, areas } = report;
+  const { recommended, areas, grades } = report;
   const maxDist = Math.max(1, ...recommended.distribution.map((d) => d.targets));
   const maxArea = Math.max(1, ...areas.map((a) => a.targets));
 
@@ -208,6 +268,30 @@ export function StatsView({ report: initial }: { report: StatsReport }) {
           <SeriesTable series={report.series} bucket={report.bucket} />
         </section>
       )}
+
+      <section className="rounded-xl border border-line bg-white p-6">
+        <h2 className="text-lg font-semibold">매치 등급 분포</h2>
+        <p className="mt-1 text-xs text-muted">
+          현재 매치(추출된 대상자) · 추천 매치 각각의 등급별 비중. 구버전 추출 데이터엔 등급 정보가 없어
+          최근 추출분만 집계됩니다.
+        </p>
+        <div className="mt-4 grid gap-6 md:grid-cols-2">
+          <GradeDistribution
+            title="현재 매치 등급 (추출된 대상)"
+            rows={grades.current}
+            unitLabel="대상"
+            barClass="bg-brand"
+            emptyText="기간 내 등급 정보가 누적된 추출 이벤트가 없습니다."
+          />
+          <GradeDistribution
+            title="추천 매치 등급"
+            rows={grades.recommended}
+            unitLabel="추천"
+            barClass="bg-accent"
+            emptyText="기간 내 등급 정보가 누적된 추천 매치가 없습니다."
+          />
+        </div>
+      </section>
 
       <section className="rounded-xl border border-line bg-white p-6">
         <h2 className="text-lg font-semibold">현재 매치 지역구 분포</h2>

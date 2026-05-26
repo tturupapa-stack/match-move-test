@@ -159,6 +159,7 @@ export class PlabApiClient {
       manager_name: string;
       manager_phone: string;
       participant_count: number;
+      grade: number | null;
     }>
   > {
     const sql = `
@@ -167,6 +168,7 @@ export class PlabApiClient {
         m.schedule,
         m.manager_id,
         m.stadium_id,
+        m.grade,
         sg.filter_area_id AS area_id,
         fa.name AS area_name,
         sg.name AS stadium_name,
@@ -208,6 +210,7 @@ export class PlabApiClient {
       manager_return: number;
       test_type: number | null;
       participant_count: number;
+      grade: number | null;
     }>
   > {
     const sql = `
@@ -215,6 +218,7 @@ export class PlabApiClient {
         m.id AS match_id,
         m.schedule,
         m.stadium_id,
+        m.grade,
         sg.name AS stadium_name,
         sg.filter_area_id AS area_id,
         m.manager_return,

@@ -1,6 +1,12 @@
 import { Router } from 'express';
 import { query } from '../../lib/db.js';
-import type { ApiOk, ReportBucket, StatsBucketRow, StatsReport } from '../../types/api.js';
+import type {
+  ApiOk,
+  ReportBucket,
+  StatsBucketRow,
+  StatsGradeRow,
+  StatsReport,
+} from '../../types/api.js';
 
 export const adminStatsRouter: Router = Router();
 
@@ -56,6 +62,45 @@ adminStatsRouter.get('/stats', async (req, res) => {
     [from, to],
   );
 
+  // 현재 매치 등급 분포 — 추출된 대상자의 현재 매치 등급(metadata.current_grade).
+  // 구버전 이벤트엔 키 자체가 없어 `metadata ? 'current_grade'`로 분류한다.
+  // current_grade가 JSON null(JSONB '?'는 키 존재만 보므로 null도 포함됨)인 케이스는
+  // grade=NULL로 묶여 UI에서 '미분류'로 표시된다.
+  const currentGradeRes = await query<{ grade: number | null; n: string }>(
+    `SELECT NULLIF(metadata->>'current_grade', '')::int AS grade,
+            COUNT(*)::text AS n
+       FROM event_log
+      WHERE event_type = 'extracted'
+        AND occurred_at BETWEEN $1 AND $2
+        AND metadata ? 'current_grade'
+      GROUP BY grade
+      ORDER BY grade ASC NULLS LAST`,
+    [from, to],
+  );
+
+  // 추천 매치 등급 분포 — recommended_grades 배열을 펼쳐서 각 등급의 등장 횟수 집계.
+  // (대상자당 1회가 아닌, 추천된 모든 매치의 등급 분포)
+  const recGradeRes = await query<{ grade: number | null; n: string }>(
+    `SELECT NULLIF(elem, '')::int AS grade,
+            COUNT(*)::text AS n
+       FROM event_log el,
+            LATERAL jsonb_array_elements_text(el.metadata->'recommended_grades') AS elem
+      WHERE el.event_type = 'extracted'
+        AND el.occurred_at BETWEEN $1 AND $2
+        AND el.metadata ? 'recommended_grades'
+      GROUP BY grade
+      ORDER BY grade ASC NULLS LAST`,
+    [from, to],
+  );
+  const currentGrades: StatsGradeRow[] = currentGradeRes.rows.map((r) => ({
+    grade: r.grade,
+    count: Number(r.n),
+  }));
+  const recommendedGrades: StatsGradeRow[] = recGradeRes.rows.map((r) => ({
+    grade: r.grade,
+    count: Number(r.n),
+  }));
+
   // 시계열 — bucket 지정 시에만 추가 쿼리.
   // KST 기준 date_trunc → 'YYYY-MM-DD'. 분모/평균 모두 totals와 동일하게
   // `metadata ? 'recommended_count'` 필터를 적용 (총합과 시계열 합이 일치).
@@ -92,6 +137,7 @@ adminStatsRouter.get('/stats', async (req, res) => {
       areaName: r.area_name ?? '(미상)',
       targets: Number(r.targets),
     })),
+    grades: { current: currentGrades, recommended: recommendedGrades },
     ...(bucket ? { bucket, series } : {}),
   };
   res.json({ ok: true, data } satisfies ApiOk<StatsReport>);

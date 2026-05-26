@@ -485,6 +485,7 @@ T-12 (리포트) ────── 데이터 누적 후
 - `before_manager_id` (int, nullable) — 양도 이력 (본 테스트에서 미사용)
 - `stadium_id` (int)
 - `test_type` (smallint) — `3, 6, 7, 8, 9`면 프로모션 매치
+- `grade` (int, nullable) — 매치 등급(난이도). NULL은 미분류. 추출 통계의 등급 분포 집계에 사용
 
 ### `plab.match_apply`
 - `match_id` (int)

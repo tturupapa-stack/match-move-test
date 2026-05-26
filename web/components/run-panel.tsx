@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { clientFetch, type ManualExtractResult } from '../lib/api';
+import { GradeBadge } from './grade-badge';
 
 export function RunPanel() {
   const today = new Date().toLocaleDateString('sv-SE'); // YYYY-MM-DD (로컬)
@@ -168,7 +169,10 @@ export function RunPanel() {
                   <tr key={i} className="border-t border-line">
                     <td className="py-2">{p.managerName ?? '-'}</td>
                     <td className="py-2">
-                      {p.current.scheduleKst} · {p.current.stadiumName}
+                      <span className="inline-flex items-center gap-2">
+                        {p.current.scheduleKst} · {p.current.stadiumName}
+                        <GradeBadge grade={p.current.grade} size="xs" />
+                      </span>
                     </td>
                     <td className="py-2 text-right tabular-nums">{p.current.participantCount}</td>
                     <td className="py-2 text-right tabular-nums">{p.recommendedCount}</td>

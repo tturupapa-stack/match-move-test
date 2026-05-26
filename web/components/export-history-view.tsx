@@ -3,6 +3,7 @@
 import { Fragment, useState } from 'react';
 import { clientFetch } from '../lib/api';
 import type { EventType, ExportHistoryItem, ExportHistoryReport } from '@shared/api';
+import { GradeBadge, formatGrade } from './grade-badge';
 
 const EVENT_LABELS: Record<EventType, string> = {
   extracted: '추출됨',
@@ -33,6 +34,7 @@ function DetailRow({ item }: { item: ExportHistoryItem }) {
           <h4 className="text-xs font-semibold text-muted">현재 매치</h4>
           <ul className="mt-1 space-y-0.5 text-sm">
             <li>시각 · 경기장: {item.matchTime ?? '—'}{item.stadiumName ? ` · ${item.stadiumName}` : ''}</li>
+            <li>등급: {formatGrade(item.currentGrade)}</li>
             <li>참가자 수: {item.participantCount ?? '—'}</li>
             <li>대상 #: {item.targetId ?? '—'}</li>
             <li>
@@ -64,8 +66,11 @@ function DetailRow({ item }: { item: ExportHistoryItem }) {
             <ul className="mt-1 space-y-1 text-sm">
               {item.recommended.map((r) => (
                 <li key={r.matchId} className="flex items-center justify-between gap-2">
-                  <span>
-                    {r.scheduleKst} · {r.stadiumName} (참가자 {r.participantCount})
+                  <span className="flex items-center gap-2">
+                    <span>
+                      {r.scheduleKst} · {r.stadiumName} (참가자 {r.participantCount})
+                    </span>
+                    <GradeBadge grade={r.grade} size="xs" />
                   </span>
                   <span className="flex shrink-0 gap-1">
                     {r.isTransferOrigin && (
@@ -281,7 +286,10 @@ export function ExportHistoryView({ report: initial }: { report: ExportHistoryRe
                       </td>
                       <td className="py-2">{it.managerName ?? `대상 #${it.targetId ?? '?'}`}</td>
                       <td className="py-2 text-muted">
-                        {it.matchTime ? `${it.matchTime}${it.stadiumName ? ` · ${it.stadiumName}` : ''}` : '—'}
+                        <span className="inline-flex items-center gap-2">
+                          {it.matchTime ? `${it.matchTime}${it.stadiumName ? ` · ${it.stadiumName}` : ''}` : '—'}
+                          <GradeBadge grade={it.currentGrade} size="xs" />
+                        </span>
                       </td>
                       <td className="py-2 text-muted">{it.operator ?? '—'}</td>
                     </tr>

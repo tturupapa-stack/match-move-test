@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { clientFetch } from '../lib/api';
 import type { RecommendedMatch } from '@shared/api';
+import { GradeBadge } from './grade-badge';
 
 export interface PendingItem {
   targetId: number;
@@ -10,6 +11,7 @@ export interface PendingItem {
   phone: string;
   matchTime: string | null;
   stadiumName: string | null;
+  currentGrade: number | null;
   exportCount: number;
   messageText: string;
   recommended: RecommendedMatch[]; // 관리자 전용: 추천받은 매치 + 양도/프로모션 여부
@@ -158,8 +160,11 @@ export function ExportPanel({ initial }: { initial: PendingData }) {
                     </span>
                   )}
                 </div>
-                <div className="text-sm text-muted">
-                  {it.matchTime} · {it.stadiumName}
+                <div className="flex items-center gap-2 text-sm text-muted">
+                  <span>
+                    {it.matchTime} · {it.stadiumName}
+                  </span>
+                  <GradeBadge grade={it.currentGrade} size="xs" />
                 </div>
               </div>
 
@@ -175,8 +180,11 @@ export function ExportPanel({ initial }: { initial: PendingData }) {
                   <ul className="space-y-1">
                     {it.recommended.map((r) => (
                       <li key={r.matchId} className="flex items-center justify-between gap-2">
-                        <span>
-                          {r.scheduleKst} · {r.stadiumName} (참가자 {r.participantCount})
+                        <span className="flex items-center gap-2">
+                          <span>
+                            {r.scheduleKst} · {r.stadiumName} (참가자 {r.participantCount})
+                          </span>
+                          <GradeBadge grade={r.grade} size="xs" />
                         </span>
                         <span className="flex shrink-0 gap-1">
                           {r.isTransferOrigin && (

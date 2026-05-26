@@ -157,6 +157,7 @@ export async function runExtractTargets(ctxOverride: Partial<ExtractContext> = {
       participantCount: Number(candidate.participant_count),
       areaId: candidate.area_id,
       areaName: candidate.area_name,
+      grade: candidate.grade,
     };
     const recommended: RecommendedMatch[] = q2Rows.slice(0, 5).map((r) => ({
       matchId: r.match_id,
@@ -165,6 +166,7 @@ export async function runExtractTargets(ctxOverride: Partial<ExtractContext> = {
       participantCount: Number(r.participant_count),
       isTransferOrigin: r.manager_return === 1,
       isPromotion: r.test_type !== null && [3, 6, 7, 8, 9].includes(r.test_type),
+      grade: r.grade,
     }));
 
     // dry-run: 저장·발송 없이 미리보기만 수집하고 다음 후보로.
@@ -229,6 +231,10 @@ export async function runExtractTargets(ctxOverride: Partial<ExtractContext> = {
         recommended_count: recommended.length,
         area_id: candidate.area_id,
         area_name: candidate.area_name,
+        // 등급 통계용: 현재 매치 등급(NULL=미분류) + 추천 매치 등급 배열.
+        // 구버전 extracted 이벤트엔 없을 수 있어 stats 조회 시 graceful 처리한다.
+        current_grade: candidate.grade,
+        recommended_grades: recommended.map((r) => r.grade ?? null),
       },
     });
     // 자동 발송 없음 (ADR-013). notification_status='pending'(DEFAULT)으로 누적되어

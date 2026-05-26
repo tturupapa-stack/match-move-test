@@ -11,6 +11,7 @@ export type CurrentMatch = {
   participantCount: number;
   areaId?: number; // 지역구 식별 (plab.area.id). 구버전 데이터엔 없을 수 있음.
   areaName?: string | null; // 지역구 이름 (plab.area.name)
+  grade?: number | null; // 매치 등급 (plab.match.grade). NULL=미분류. 구버전 데이터엔 없을 수 있음.
 };
 
 export type RecommendedMatch = {
@@ -20,6 +21,7 @@ export type RecommendedMatch = {
   participantCount: number;
   isTransferOrigin: boolean; // manager_return = 1
   isPromotion: boolean; // test_type IN (3,6,7,8,9)
+  grade?: number | null; // 매치 등급 (plab.match.grade). NULL=미분류.
 };
 
 // 매니저(추천 페이지)에게 노출되는 추천 매치 — 양도/프로모션 여부는 숨긴다 (관리자 전용 정보).
@@ -136,6 +138,8 @@ export type StatsBucketRow = {
   targets: number; // 해당 구간 추출 대상 수
   avgRecommended: number; // 해당 구간 평균 추천 매치 수 (recommended_count 평균)
 };
+// 등급 1행. grade=null은 PLAB match.grade가 NULL인 케이스 (UI에선 '미분류').
+export type StatsGradeRow = { grade: number | null; count: number };
 export type StatsReport = {
   range: { from: string; to: string };
   recommended: {
@@ -146,6 +150,13 @@ export type StatsReport = {
   };
   // 현재 매치가 속한 지역구별 대상 수 (내림차순). areaName 미상은 '(미상)'.
   areas: Array<{ areaId: number | null; areaName: string; targets: number }>;
+  // 등급 분포 — current는 추출된 대상자의 현재 매치 등급, recommended는 추천된 매치 등급
+  // 모두 등급 오름차순(NULL은 마지막).
+  // 구버전 extracted 이벤트엔 등급 metadata가 없어 빈 배열일 수 있다.
+  grades: {
+    current: StatsGradeRow[];
+    recommended: StatsGradeRow[];
+  };
   // 시계열 — bucket 쿼리 파라미터가 있을 때만 채워진다.
   bucket?: ReportBucket;
   series?: StatsBucketRow[];
@@ -165,6 +176,7 @@ export type ExportHistoryItem = {
   managerName: string | null;
   matchTime: string | null; // 현재 매치 시각 (current_match_info.scheduleKst)
   stadiumName: string | null;
+  currentGrade: number | null; // 현재 매치 등급 (구버전 대상은 null)
   operator: string | null; // 처리자 (marked_by | excluded_by)
   // ── 토글 상세 ──
   participantCount: number | null; // 현재 매치 참가자 수

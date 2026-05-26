@@ -41,6 +41,7 @@ export interface PendingMessageItem {
   phone: string; // 숫자만 (식별용). PLAB 조회 실패 시 빈 문자열.
   matchTime: string | null;
   stadiumName: string | null;
+  currentGrade: number | null; // 현재 매치 등급 (CurrentMatch.grade — 구버전 대상은 null)
   exportCount: number;
   messageText: string; // 채널톡에 그대로 붙여넣을 본문 (메시지 + 추천 페이지 URL)
   recommended: RecommendedMatch[]; // 관리자 전용: 추천받은 매치 + 양도/프로모션 여부
@@ -89,6 +90,7 @@ adminExportRouter.get('/export/pending', async (_req, res) => {
       phone: rawPhone ? digitsOnly(rawPhone) : '',
       matchTime: cm.scheduleKst,
       stadiumName: cm.stadiumName,
+      currentGrade: cm.grade ?? null,
       exportCount: t.export_count,
       messageText: `${body}\n\n▶ 추천 매치 보기: ${url}`,
       recommended: t.recommended_matches ?? [],
@@ -192,6 +194,7 @@ interface HistoryRow {
   manager_name: string | null;
   match_time: string | null;
   stadium_name: string | null;
+  current_grade: number | null;
   operator: string | null;
   participant_count: number | null;
   export_count: number | null;
@@ -219,6 +222,7 @@ adminExportRouter.get('/export/history', async (req, res) => {
         t.manager_name,
         t.current_match_info->>'scheduleKst' AS match_time,
         t.current_match_info->>'stadiumName' AS stadium_name,
+        NULLIF(t.current_match_info->>'grade', '')::int AS current_grade,
         (t.current_match_info->>'participantCount')::int AS participant_count,
         t.export_count,
         t.notification_status,
@@ -272,6 +276,7 @@ adminExportRouter.get('/export/history', async (req, res) => {
     managerName: r.manager_name,
     matchTime: r.match_time,
     stadiumName: r.stadium_name,
+    currentGrade: r.current_grade,
     operator: r.operator,
     participantCount: r.participant_count != null ? Number(r.participant_count) : null,
     exportCount: r.export_count != null ? Number(r.export_count) : null,
