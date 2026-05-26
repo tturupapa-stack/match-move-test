@@ -123,8 +123,6 @@ export function ExportHistoryView({ report: initial }: { report: ExportHistoryRe
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [openId, setOpenId] = useState<number | null>(null);
-  const [backfillBusy, setBackfillBusy] = useState(false);
-  const [backfillMsg, setBackfillMsg] = useState<string | null>(null);
 
   const apply = async () => {
     if (from > to) {
@@ -145,34 +143,6 @@ export function ExportHistoryView({ report: initial }: { report: ExportHistoryRe
   const setQuickRange = (days: number) => {
     setTo(todayYmd);
     setFrom(toLocalYmd(new Date(Date.now() - (days - 1) * 86400_000)));
-  };
-
-  // 구버전 추출분 fieldName 보강 — 이번 기능 이전 대상은 jsonb에 면 번호가 비어 있어 표시되지 않음.
-  // 클릭 시 PLAB에서 일괄 조회해 targets 테이블을 한 번에 업데이트.
-  const backfillFieldName = async () => {
-    setBackfillBusy(true);
-    setBackfillMsg(null);
-    const r = await clientFetch<{
-      examined: number;
-      updated: number;
-      plabQueried: number;
-      plabMissing: number;
-    }>('/api/admin/targets/backfill-field-name', { method: 'POST' });
-    setBackfillBusy(false);
-    if (r.ok) {
-      const { examined, updated, plabMissing } = r.data;
-      if (examined === 0) {
-        setBackfillMsg('보강할 대상이 없습니다 (이미 모두 구장면 번호 포함).');
-      } else {
-        setBackfillMsg(
-          `검토 ${examined}건 · 업데이트 ${updated}건` +
-            (plabMissing > 0 ? ` · PLAB에서 응답 없는 매치 ${plabMissing}건` : ''),
-        );
-        await apply(); // 결과 반영
-      }
-    } else {
-      setBackfillMsg(`실패: ${r.error.message}`);
-    }
   };
 
   const { items, exportedCount, excludedCount } = data;
@@ -260,19 +230,6 @@ export function ExportHistoryView({ report: initial }: { report: ExportHistoryRe
           ))}
         </div>
         {err && <p className="mt-3 text-sm text-danger">{err}</p>}
-
-        <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-line pt-3">
-          <button
-            type="button"
-            onClick={backfillFieldName}
-            disabled={backfillBusy}
-            className="rounded-lg border border-line px-3 py-1.5 text-sm hover:bg-surface disabled:opacity-40"
-            title="이 기능 배포 이전에 추출된 대상의 구장면 번호(plab.stadium.name)를 PLAB에서 일괄 조회해 보강합니다. idempotent."
-          >
-            {backfillBusy ? '보강 중…' : '구버전 대상 구장면 번호 보강'}
-          </button>
-          {backfillMsg && <span className="text-xs text-muted">{backfillMsg}</span>}
-        </div>
       </section>
 
       <section className="rounded-xl border border-line bg-white p-6">
