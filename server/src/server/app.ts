@@ -8,6 +8,8 @@ import { adminStatsRouter } from './routes/admin-stats.js';
 import { healthRouter } from './routes/health.js';
 import { matchMoveRouter } from './routes/match-move.js';
 import { slackWebhookRouter } from './routes/slack-webhook.js';
+import { surveyRouter } from './routes/survey.js';
+import { adminSurveyRouter } from './routes/admin-survey.js';
 
 export function createApp(): Express {
   const app = express();
@@ -31,10 +33,12 @@ export function createApp(): Express {
 
   app.use(healthRouter);
   app.use('/api/match-move', matchMoveRouter);
+  app.use('/api/match-move', surveyRouter);
   app.use('/api/admin', adminConfigRouter);
   app.use('/api/admin', adminExportRouter);
   app.use('/api/admin', adminFunnelRouter);
   app.use('/api/admin', adminStatsRouter);
+  app.use('/api/admin', adminSurveyRouter);
 
   app.use(notFound);
   app.use(errorHandler);

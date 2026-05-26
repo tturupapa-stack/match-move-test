@@ -234,6 +234,75 @@ export type ManualExtractBody = {
   dryRun?: boolean;
 };
 
+// === Survey (액션 직후 후속 설문 — F-9) ===
+// 액션 유형별 선택지(복수 선택 가능). reasons 배열에 코드값을 담는다.
+// 'other' 선택 시 otherText 자유 입력.
+export type SurveyActionType = 'select' | 'keep';
+export const SURVEY_KEEP_REASONS = [
+  'few_options', // 추천된 매치의 선택지가 적어서
+  'location_mismatch', // 추천된 매치의 장소 조건이 맞지 않아서
+  'current_match_likely', // 기존 매치가 진행될 수 있을 것 같아서
+  'current_match_benefit', // 기존 매치의 혜택을 받고 싶어서
+  'other',
+] as const;
+export type SurveyKeepReason = (typeof SURVEY_KEEP_REASONS)[number];
+export const SURVEY_SELECT_REASONS = [
+  'high_likelihood', // 이동 매치의 진행 가능성이 높아 보여서
+  'location_ok', // 장소가 비슷하거나 크게 불편하지 않아서
+  'same_time', // 시간이 동일해서
+  'other',
+] as const;
+export type SurveySelectReason = (typeof SURVEY_SELECT_REASONS)[number];
+
+export type SurveySubmitBody = {
+  token: string;
+  actionType: SurveyActionType;
+  reasons: string[]; // 액션 유형에 맞는 코드값들
+  otherText?: string; // 'other' 포함 시 자유 입력
+  suggestion?: string; // Q2 자유 의견
+};
+
+export type SurveySubmitResult =
+  | { status: 'accepted' }
+  | { status: 'already_submitted' }
+  | { status: 'action_mismatch' } // 토큰의 대상자가 해당 actionType 액션을 하지 않음
+  | { status: 'no_action_yet' } // 아직 select/keep 액션 자체가 없음 → 설문 노출 자체가 잘못된 흐름
+  | { status: 'invalid_token' }
+  | { status: 'invalid_body' };
+
+// === GET /api/admin/surveys — 어드민 설문 응답 집계 ===
+export type SurveyReasonBreakdown = {
+  reason: string; // 코드값 (예: 'few_options'). 'other' 포함
+  count: number;
+};
+export type SurveyResponseItem = {
+  id: number;
+  targetId: number;
+  managerName: string | null;
+  actionType: SurveyActionType;
+  reasons: string[];
+  otherText: string | null;
+  suggestion: string | null;
+  submittedKst: string; // 'YYYY-MM-DD HH:mm'
+  // 응답 당시 매니저 컨텍스트 (어드민이 한 줄에서 누가 어떤 매치였는지 보기 위한 단순 스냅샷)
+  currentMatchTime: string | null;
+  currentStadiumName: string | null;
+};
+export type SurveyReport = {
+  range: { from: string; to: string };
+  totals: {
+    all: number;
+    keep: number; // 유지 액션 + 설문 제출
+    select: number; // 이동 요청 + 설문 제출
+  };
+  // 액션 유형별 사유 분포 (내림차순)
+  reasons: {
+    keep: SurveyReasonBreakdown[];
+    select: SurveyReasonBreakdown[];
+  };
+  items: SurveyResponseItem[]; // 최신순
+};
+
 // === Event types ===
 export const EVENT_TYPES = [
   'extracted',
@@ -246,5 +315,6 @@ export const EVENT_TYPES = [
   'entered_after_deadline',
   'change_completed',
   'match_result',
+  'survey_submitted', // 매니저 액션 직후 후속 설문 제출 (F-9)
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
