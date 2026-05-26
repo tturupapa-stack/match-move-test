@@ -1,19 +1,25 @@
 import { Router } from 'express';
 import { query } from '../../lib/db.js';
-import type { ApiOk, StatsReport } from '../../types/api.js';
+import type { ApiOk, ReportBucket, StatsBucketRow, StatsReport } from '../../types/api.js';
 
 export const adminStatsRouter: Router = Router();
 
+function parseBucket(raw: unknown): ReportBucket | undefined {
+  return raw === 'day' || raw === 'week' ? raw : undefined;
+}
+
 /**
- * GET /api/admin/stats?from=ISO&to=ISO
+ * GET /api/admin/stats?from=ISO&to=ISO&bucket=day|week
  * extracted 이벤트 metadata에 누적된 추출 통계를 집계한다.
  *   - recommended_count: 대상당 제안된 추천 매치 수
  *   - area_id / area_name: 현재 매치가 속한 지역구
  * (구버전 extracted 이벤트엔 area 정보가 없을 수 있어 '(미상)'으로 묶인다.)
+ * bucket=day|week 지정 시 시계열(series)도 함께 반환 (KST 기준).
  */
 adminStatsRouter.get('/stats', async (req, res) => {
   const from = String(req.query.from ?? new Date(Date.now() - 7 * 86400_000).toISOString());
   const to = String(req.query.to ?? new Date().toISOString());
+  const bucket = parseBucket(req.query.bucket);
 
   // 추천 매치 수: 전체/평균/분포
   const recRes = await query<{ targets: string; avg: string | null }>(
@@ -50,6 +56,30 @@ adminStatsRouter.get('/stats', async (req, res) => {
     [from, to],
   );
 
+  // 시계열 — bucket 지정 시에만 추가 쿼리.
+  // KST 기준 date_trunc → 'YYYY-MM-DD'. 분모/평균 모두 totals와 동일하게
+  // `metadata ? 'recommended_count'` 필터를 적용 (총합과 시계열 합이 일치).
+  let series: StatsBucketRow[] | undefined;
+  if (bucket) {
+    const seriesRes = await query<{ bucket: string; targets: string; avg: string | null }>(
+      `SELECT to_char(date_trunc($3, occurred_at AT TIME ZONE 'Asia/Seoul'), 'YYYY-MM-DD') AS bucket,
+              COUNT(*)::text AS targets,
+              AVG((metadata->>'recommended_count')::int) AS avg
+         FROM event_log
+        WHERE event_type = 'extracted'
+          AND occurred_at BETWEEN $1 AND $2
+          AND metadata ? 'recommended_count'
+        GROUP BY bucket
+        ORDER BY bucket ASC`,
+      [from, to, bucket],
+    );
+    series = seriesRes.rows.map((r) => ({
+      bucketStart: r.bucket,
+      targets: Number(r.targets),
+      avgRecommended: r.avg == null ? 0 : Number(r.avg),
+    }));
+  }
+
   const data: StatsReport = {
     range: { from, to },
     recommended: {
@@ -62,6 +92,7 @@ adminStatsRouter.get('/stats', async (req, res) => {
       areaName: r.area_name ?? '(미상)',
       targets: Number(r.targets),
     })),
+    ...(bucket ? { bucket, series } : {}),
   };
   res.json({ ok: true, data } satisfies ApiOk<StatsReport>);
 });

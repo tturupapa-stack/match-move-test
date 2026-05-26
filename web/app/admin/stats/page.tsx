@@ -1,15 +1,10 @@
 import { StatsView } from '../../../components/stats-view';
 import { serverFetch, type StatsReport } from '../../../lib/api';
 
-export default async function StatsPage(props: {
-  searchParams: Promise<{ from?: string; to?: string }>;
-}) {
-  const sp = await props.searchParams;
-  const qs = new URLSearchParams();
-  if (sp.from) qs.set('from', sp.from);
-  if (sp.to) qs.set('to', sp.to);
-
-  const r = await serverFetch<StatsReport>(`/api/admin/stats?${qs.toString()}`);
+// 클라이언트 인터랙션(기간·일/주별)이 모두 StatsView 안에서 처리되도록 단순화.
+// 초기 데이터는 서버에서 최근 7일 합계로 한 번 prefetch.
+export default async function StatsPage() {
+  const r = await serverFetch<StatsReport>('/api/admin/stats');
   if (!r.ok) {
     return <p className="text-danger">통계를 불러오지 못했습니다.</p>;
   }
@@ -18,7 +13,7 @@ export default async function StatsPage(props: {
       <header>
         <h1 className="text-2xl font-bold tracking-tight">추출 통계</h1>
         <p className="mt-1 text-sm text-muted">
-          기간: {r.data.range.from} ~ {r.data.range.to}
+          기간·일/주별 집계 단위를 변경하려면 아래 필터를 사용하세요.
         </p>
       </header>
       <StatsView report={r.data} />

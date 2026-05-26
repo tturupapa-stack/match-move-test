@@ -96,28 +96,46 @@ export type PromotionMapUpdateBody = {
 };
 
 // === Funnel ===
+export type ReportBucket = 'day' | 'week';
+export type FunnelSteps = {
+  extracted: number;
+  exported: number; // 비즈엠 발송 자료로 추출됨 (bizm_exported)
+  pageEntered: number;
+  changeRequested: number;
+  keptExisting: number; // 명시적 '현재 매치 유지' 선택
+  noResponse: number; // 마감까지 무응답 (유지로 간주)
+  changeCompleted: number;
+};
+export type FunnelDerived = {
+  changeRequestRate: number;
+  completionRate: number;
+};
+// 시계열 1행. bucketStart는 'YYYY-MM-DD' (KST 기준; week는 ISO 월요일).
+export type FunnelBucketRow = {
+  bucketStart: string;
+  steps: FunnelSteps;
+  derived: FunnelDerived;
+};
 export type FunnelReport = {
   range: { from: string; to: string };
-  steps: {
-    extracted: number;
-    exported: number; // 비즈엠 발송 자료로 추출됨 (bizm_exported)
-    pageEntered: number;
-    changeRequested: number;
-    keptExisting: number; // 명시적 '현재 매치 유지' 선택
-    noResponse: number; // 마감까지 무응답 (유지로 간주)
-    changeCompleted: number;
-  };
-  derived: {
-    changeRequestRate: number;
-    completionRate: number;
-  };
+  steps: FunnelSteps;
+  derived: FunnelDerived;
   costSavings: {
     completedTransferPromotion: number;
     totalEstimatedAmount: number;
   };
+  // 시계열 — bucket 쿼리 파라미터가 있을 때만 채워진다 (없으면 undefined).
+  bucket?: ReportBucket;
+  series?: FunnelBucketRow[];
 };
 
 // === GET /api/admin/stats — 추출 통계 (extracted 이벤트 누적 집계) ===
+// 시계열 1행. bucketStart는 'YYYY-MM-DD' (KST 기준; week는 ISO 월요일).
+export type StatsBucketRow = {
+  bucketStart: string;
+  targets: number; // 해당 구간 추출 대상 수
+  avgRecommended: number; // 해당 구간 평균 추천 매치 수 (recommended_count 평균)
+};
 export type StatsReport = {
   range: { from: string; to: string };
   recommended: {
@@ -128,6 +146,9 @@ export type StatsReport = {
   };
   // 현재 매치가 속한 지역구별 대상 수 (내림차순). areaName 미상은 '(미상)'.
   areas: Array<{ areaId: number | null; areaName: string; targets: number }>;
+  // 시계열 — bucket 쿼리 파라미터가 있을 때만 채워진다.
+  bucket?: ReportBucket;
+  series?: StatsBucketRow[];
 };
 
 // === GET /api/admin/export/history — 발송 완료/대상 제외 개별 이력 ===
