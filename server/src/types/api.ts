@@ -118,6 +118,18 @@ export type FunnelBucketRow = {
   steps: FunnelSteps;
   derived: FunnelDerived;
 };
+// 비용 절감 집계 단계별 누락 진단. 운영자가 '왜 0건/적게 잡혔는지' 즉시 식별 가능.
+export type FunnelCostBreakdown = {
+  completedTotal: number; // 기간 내 change_completed 총건
+  completedWithTransfer: number; // 그중 is_transferred_origin=true
+  completedWithAmount: number; // is_transferred_origin=true AND promotion_released_amount IS NOT NULL  (=최종 카운트)
+  // 양도였으나 금액 매핑이 비어 카운트에서 빠진 건 (즉 completedWithTransfer - completedWithAmount).
+  // 원인을 한 단계 더 세분화 (test_type 자체가 NULL / map에 행 없음).
+  missingAmount: {
+    noTestType: number; // change_requested.test_type이 NULL인 케이스
+    noMapping: number; // test_type은 있는데 promotion_amount_map에 매핑 없음
+  };
+};
 export type FunnelReport = {
   range: { from: string; to: string };
   steps: FunnelSteps;
@@ -125,6 +137,7 @@ export type FunnelReport = {
   costSavings: {
     completedTransferPromotion: number;
     totalEstimatedAmount: number;
+    breakdown: FunnelCostBreakdown;
   };
   // 시계열 — bucket 쿼리 파라미터가 있을 때만 채워진다 (없으면 undefined).
   bucket?: ReportBucket;

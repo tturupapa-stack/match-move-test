@@ -109,6 +109,18 @@ export function FunnelView({ report: initial }: { report: FunnelReport }) {
   const [report, setReport] = useState<FunnelReport>(initial);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [recomputeBusy, setRecomputeBusy] = useState(false);
+  const [recomputeMsg, setRecomputeMsg] = useState<string | null>(null);
+
+  // 현재 from/to 입력값 → API 쿼리스트링 (from/to/bucket).
+  const buildParams = () => {
+    const params = new URLSearchParams({
+      from: ymdToKstIso(from, false),
+      to: ymdToKstIso(to, true),
+    });
+    if (bucket !== 'none') params.set('bucket', bucket);
+    return params;
+  };
 
   const apply = async () => {
     if (from > to) {
@@ -117,15 +129,36 @@ export function FunnelView({ report: initial }: { report: FunnelReport }) {
     }
     setLoading(true);
     setErr(null);
+    const r = await clientFetch<FunnelReport>(`/api/admin/funnel?${buildParams().toString()}`);
+    setLoading(false);
+    if (r.ok) setReport(r.data);
+    else setErr(r.error.message);
+  };
+
+  const recomputePromotion = async () => {
+    setRecomputeBusy(true);
+    setRecomputeMsg(null);
     const params = new URLSearchParams({
       from: ymdToKstIso(from, false),
       to: ymdToKstIso(to, true),
     });
-    if (bucket !== 'none') params.set('bucket', bucket);
-    const r = await clientFetch<FunnelReport>(`/api/admin/funnel?${params.toString()}`);
-    setLoading(false);
-    if (r.ok) setReport(r.data);
-    else setErr(r.error.message);
+    const r = await clientFetch<{ examined: number; updated: number; stillMissingAmount: number }>(
+      `/api/admin/funnel/recompute-promotion?${params.toString()}`,
+      { method: 'POST' },
+    );
+    setRecomputeBusy(false);
+    if (r.ok) {
+      setRecomputeMsg(
+        `재계산 완료 — 검토 ${r.data.examined}건, 업데이트 ${r.data.updated}건` +
+          (r.data.stillMissingAmount > 0
+            ? `, 매핑/test_type 미확보 ${r.data.stillMissingAmount}건`
+            : ''),
+      );
+      // 결과 반영을 위해 재조회
+      await apply();
+    } else {
+      setRecomputeMsg(`실패: ${r.error.message}`);
+    }
   };
 
   const setQuickRange = (days: number) => {
@@ -222,7 +255,10 @@ export function FunnelView({ report: initial }: { report: FunnelReport }) {
       )}
 
       <section className="rounded-xl border border-line bg-white p-6">
-        <h2 className="text-lg font-semibold">비용 절감 (부차 지표)</h2>
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-lg font-semibold">비용 절감 (부차 지표)</h2>
+          <span className="text-xs text-muted">스냅샷 — 새 이동이 반영 안 되면 ‘적용’으로 재조회</span>
+        </div>
         <dl className="mt-3 space-y-1 text-sm">
           <div className="flex justify-between">
             <dt className="text-muted">양도+프로모션 이동 완료</dt>
@@ -233,7 +269,95 @@ export function FunnelView({ report: initial }: { report: FunnelReport }) {
             <dd className="tabular-nums">{report.costSavings.totalEstimatedAmount.toLocaleString()} 원</dd>
           </div>
         </dl>
+
+        <CostBreakdownBox breakdown={report.costSavings.breakdown} />
+
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={recomputePromotion}
+            disabled={recomputeBusy}
+            className="rounded-lg border border-line px-3 py-1.5 text-sm hover:bg-surface disabled:opacity-40"
+            title="누락된 promotion_released_amount / is_transferred_origin을 change_requested + promotion_amount_map으로 재계산"
+          >
+            {recomputeBusy ? '재계산 중…' : '누락 메타 재계산'}
+          </button>
+          {recomputeMsg && <span className="text-sm text-muted">{recomputeMsg}</span>}
+        </div>
       </section>
+    </div>
+  );
+}
+
+// 비용 절감 누락 진단 박스 — 어느 단계에서 카운트가 빠지는지 운영자가 즉시 식별.
+function CostBreakdownBox({
+  breakdown,
+}: {
+  breakdown: FunnelReport['costSavings']['breakdown'];
+}) {
+  const { completedTotal, completedWithTransfer, completedWithAmount, missingAmount } = breakdown;
+  const transferGap = completedTotal - completedWithTransfer;
+  const amountGap = completedWithTransfer - completedWithAmount;
+  const allHealthy = completedTotal > 0 && amountGap === 0 && transferGap === 0;
+  return (
+    <div className="mt-4 rounded-lg border border-line bg-surface p-3 text-sm">
+      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
+        집계 진단 (왜 위 숫자가 이렇게 나왔는지)
+      </div>
+      <ol className="space-y-1.5">
+        <li className="flex justify-between gap-3">
+          <span>① 이동 완료 이벤트 (Slack ✅ 처리)</span>
+          <span className="tabular-nums">{completedTotal} 건</span>
+        </li>
+        <li className="flex justify-between gap-3">
+          <span className="pl-4">└ 양도 매물이었던 건 (is_transferred_origin=true)</span>
+          <span className="tabular-nums">
+            {completedWithTransfer}
+            {transferGap > 0 && <span className="ml-1 text-muted">(−{transferGap})</span>}
+          </span>
+        </li>
+        <li className="flex justify-between gap-3">
+          <span className="pl-8">└ 프로모션 금액 매핑됨 (최종 카운트)</span>
+          <span className="tabular-nums font-semibold">
+            {completedWithAmount}
+            {amountGap > 0 && <span className="ml-1 text-danger">(−{amountGap})</span>}
+          </span>
+        </li>
+      </ol>
+      {amountGap > 0 && (
+        <div className="mt-2 rounded bg-white p-2 text-xs">
+          <div className="font-medium text-danger">금액 미매핑 {amountGap}건 사유</div>
+          <ul className="mt-1 ml-4 list-disc text-muted">
+            {missingAmount.noTestType > 0 && (
+              <li>
+                요청 시점 <code>test_type</code>이 NULL — PLAB q5 일시 장애 가능성 ({missingAmount.noTestType}건)
+              </li>
+            )}
+            {missingAmount.noMapping > 0 && (
+              <li>
+                <code>promotion_amount_map</code>에 해당 test_type 행 없음 — /admin/config에서 매핑 입력 필요 (
+                {missingAmount.noMapping}건)
+              </li>
+            )}
+            {missingAmount.noTestType + missingAmount.noMapping < amountGap && (
+              <li>
+                기타 (구버전 metadata 등) {amountGap - missingAmount.noTestType - missingAmount.noMapping}건
+              </li>
+            )}
+          </ul>
+          <p className="mt-1.5 text-muted">
+            아래 <b>누락 메타 재계산</b> 버튼을 누르면 가능한 건은 자동 보정됩니다.
+          </p>
+        </div>
+      )}
+      {allHealthy && (
+        <p className="mt-1 text-xs text-brand">모든 이동 완료 건이 비용 절감 카운트에 포함되어 있습니다.</p>
+      )}
+      {completedTotal === 0 && (
+        <p className="mt-1 text-xs text-muted">
+          기간 내 <code>change_completed</code> 이벤트가 없습니다. Slack ✅ 반응이 webhook으로 들어왔는지 확인하세요.
+        </p>
+      )}
     </div>
   );
 }
