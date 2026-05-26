@@ -25,7 +25,15 @@ CREATE TABLE IF NOT EXISTS survey_responses (
   suggestion TEXT,
   submitted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-ALTER TABLE survey_responses
-  ADD CONSTRAINT uniq_survey_target UNIQUE (target_id);
+-- 002와 동일한 패턴: pg_constraint 가드로 멱등화 (재실행 시 fail 방지).
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'uniq_survey_target'
+  ) THEN
+    ALTER TABLE survey_responses
+      ADD CONSTRAINT uniq_survey_target UNIQUE (target_id);
+  END IF;
+END$$;
 CREATE INDEX IF NOT EXISTS idx_survey_responses_action_type ON survey_responses(action_type);
 CREATE INDEX IF NOT EXISTS idx_survey_responses_submitted_at ON survey_responses(submitted_at);
