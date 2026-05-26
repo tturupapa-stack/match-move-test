@@ -17,6 +17,12 @@ import type {
   MatchMoveState,
   PromotionMap,
   PromotionMapUpdateBody,
+  SurveySubmitBody,
+  SurveySubmitResult,
+  SurveyReport,
+  SurveyResponseItem,
+  SurveyReasonBreakdown,
+  SurveyActionType,
 } from '@shared/api';
 
 export type {
@@ -37,6 +43,12 @@ export type {
   MatchMoveState,
   PromotionMap,
   PromotionMapUpdateBody,
+  SurveySubmitBody,
+  SurveySubmitResult,
+  SurveyReport,
+  SurveyResponseItem,
+  SurveyReasonBreakdown,
+  SurveyActionType,
 };
 
 const SERVER_API_BASE = process.env.API_BASE_URL ?? 'http://localhost:4000';

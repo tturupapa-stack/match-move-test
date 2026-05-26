@@ -17,6 +17,7 @@ const EVENT_LABELS: Record<EventType, string> = {
   entered_after_deadline: '마감 후 진입',
   change_completed: '변경 완료',
   match_result: '매치 결과',
+  survey_submitted: '설문 제출',
 };
 
 function StatusBadge({ status }: { status: ExportHistoryItem['status'] }) {

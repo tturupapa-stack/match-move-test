@@ -8,6 +8,7 @@ const TABS = [
   { href: '/admin/run', label: '수동 추출' },
   { href: '/admin/funnel', label: 'Funnel 리포트' },
   { href: '/admin/stats', label: '추출 통계' },
+  { href: '/admin/surveys', label: '설문 응답' },
 ];
 
 export default function AdminLayout({ children }: { children: ReactNode }) {

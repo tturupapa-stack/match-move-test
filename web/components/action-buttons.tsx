@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { clientFetch, type MatchMoveActionResult } from '../lib/api';
 import { CurrentMatchCard, RecommendedMatchCard } from './match-card';
 import { StatusBanner } from './status-banner';
+import { SurveyForm } from './survey-form';
 import type { CurrentMatchPublic, RecommendedMatchPublic } from '@shared/api';
 
 type ResultStatus = MatchMoveActionResult['status'];
@@ -19,10 +20,12 @@ export function ActionView({
 }) {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [result, setResult] = useState<ResultStatus | null>(null);
+  // submit 시점에 어떤 액션이었는지 보관 — 'accepted' 후 설문 폼이 어떤 질문지를 띄울지 결정한다.
+  const [committedAction, setCommittedAction] = useState<'select' | 'keep' | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  if (result === 'accepted') {
-    return <StatusBanner tone="success">접수되었습니다. 감사합니다.</StatusBanner>;
+  if (result === 'accepted' && committedAction) {
+    return <SurveyForm token={token} actionType={committedAction} />;
   }
   if (result === 'already_actioned') {
     return <StatusBanner tone="info">이미 응답이 접수되었습니다.</StatusBanner>;
@@ -55,8 +58,10 @@ export function ActionView({
           ...body,
         }),
       });
-      if (r.ok) setResult(r.data.status);
-      else setResult('invalid_token');
+      if (r.ok) {
+        if (r.data.status === 'accepted') setCommittedAction(body.action);
+        setResult(r.data.status);
+      } else setResult('invalid_token');
     } finally {
       setSubmitting(false);
     }
@@ -106,8 +111,9 @@ export function KeepOnlyView({ token, current }: { token: string; current: Curre
   const [result, setResult] = useState<ResultStatus | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  // 추천이 없을 때 가능한 액션은 'keep' 뿐이므로, 접수 후 곧바로 keep 설문을 노출한다.
   if (result === 'accepted') {
-    return <StatusBanner tone="success">접수되었습니다. 감사합니다.</StatusBanner>;
+    return <SurveyForm token={token} actionType="keep" />;
   }
   if (result) {
     return <StatusBanner tone="info">처리 결과: {result}</StatusBanner>;
