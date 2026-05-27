@@ -144,3 +144,71 @@ describe('extract-targets — interval overlap (manager conflict)', () => {
     expect(survivors).toEqual(['2026-05-20T19:00:00Z', '2026-05-20T23:00:00Z']);
   });
 });
+
+describe('extract-targets — 장비/런드리 필터', () => {
+  // Q1이 가져오는 매니저 장비 컬럼(manager_has_equipment) + Q2의 is_laundry 조합으로
+  // 추천 후보를 거른다. has_equipment === 1 만 보유로 인정(NULL/0은 미보유).
+  function filterByEquipment<T extends { is_laundry: number | null }>(
+    recs: T[],
+    managerHasEquipment: number | null,
+  ): T[] {
+    if (managerHasEquipment === 1) return recs; // 보유 매니저: 모두 통과
+    return recs.filter((r) => r.is_laundry === 1); // 미보유 매니저: 런드리만
+  }
+
+  const recs = [
+    { match_id: 1, is_laundry: 1 }, // 런드리 구장
+    { match_id: 2, is_laundry: 0 }, // 일반 구장
+    { match_id: 3, is_laundry: null }, // 데이터 누락(안전상 일반 취급)
+    { match_id: 4, is_laundry: 1 }, // 런드리 구장
+  ];
+
+  it('장비 보유 매니저(=1): 런드리/일반/누락 모두 통과', () => {
+    expect(filterByEquipment(recs, 1).map((r) => r.match_id)).toEqual([1, 2, 3, 4]);
+  });
+
+  it('장비 미보유 매니저(=0): 런드리(is_laundry=1)만 통과', () => {
+    expect(filterByEquipment(recs, 0).map((r) => r.match_id)).toEqual([1, 4]);
+  });
+
+  it('장비 컬럼 NULL: 미보유로 간주 → 런드리만 통과', () => {
+    expect(filterByEquipment(recs, null).map((r) => r.match_id)).toEqual([1, 4]);
+  });
+});
+
+describe('PlabApiClient SQL: 장비/런드리 컬럼 노출', () => {
+  function mkCapturingClient(rows: unknown[] = []) {
+    let capturedSql = '';
+    const f = vi.fn(async (_url: string, init: RequestInit) => {
+      capturedSql = JSON.parse(String(init.body)).query;
+      return new Response(JSON.stringify({ success: true, data: rows }), { status: 200 });
+    }) as unknown as typeof fetch;
+    const client = new PlabApiClient({
+      baseUrl: 'https://example.test/api',
+      apiKey: 'k',
+      fetchImpl: f,
+      backoffMs: 1,
+    });
+    return { client, getSql: () => capturedSql };
+  }
+
+  it('Q1: mgr.has_manager_equipment 를 SELECT 한다', async () => {
+    const { client, getSql } = mkCapturingClient();
+    await client.q1ExtractTargetMatches({
+      targetSchedule: '2026-05-20 19:00:00',
+      lowThreshold: 4,
+    });
+    expect(getSql()).toMatch(/mgr\.has_manager_equipment\s+AS\s+manager_has_equipment/);
+  });
+
+  it('Q2: sg.is_laundry 를 SELECT 한다', async () => {
+    const { client, getSql } = mkCapturingClient();
+    await client.q2FindRecommendations({
+      fromScheduleUtc: '2026-05-20 10:00:00',
+      toScheduleUtc: '2026-05-20 14:00:00',
+      areaId: 5,
+      highThreshold: 6,
+    });
+    expect(getSql()).toMatch(/sg\.is_laundry/);
+  });
+});
