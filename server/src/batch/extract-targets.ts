@@ -52,6 +52,8 @@ export interface ExtractSummary {
   inserted: number;
   /** 매니저 충돌(보유 매치와 2h interval overlap)으로 추천에서 제거된 누적 카운트. */
   recommendationConflictsFiltered: number;
+  /** 장비 미보유 매니저인데 비런드리 매치라 추천에서 제거된 누적 카운트. */
+  recommendationEquipmentFiltered: number;
   /** dryRun일 때만 채워지는 대상 미리보기. */
   preview: ExtractPreviewItem[];
 }
@@ -120,6 +122,7 @@ export async function runExtractTargets(ctxOverride: Partial<ExtractContext> = {
     afterRecommendationFilter: 0,
     inserted: 0,
     recommendationConflictsFiltered: 0,
+    recommendationEquipmentFiltered: 0,
     preview: [],
   };
 
@@ -203,9 +206,21 @@ export async function runExtractTargets(ctxOverride: Partial<ExtractContext> = {
       summary.recommendationConflictsFiltered += before - q2Rows.length;
     }
 
+    // 장비/런드리 필터:
+    // - 매니저가 장비 보유(has_manager_equipment=1)면 런드리/일반 모두 추천 가능
+    // - 미보유면 런드리 구장(sg.is_laundry=1) 매치만 추천 가능
+    // NULL은 모두 '아님'으로 해석(안전 측 fallback — 미보유/일반으로 처리).
+    const managerHasEquipment = candidate.manager_has_equipment === 1;
+    if (!managerHasEquipment) {
+      const before = q2Rows.length;
+      q2Rows = q2Rows.filter((r) => r.is_laundry === 1);
+      summary.recommendationEquipmentFiltered += before - q2Rows.length;
+    }
+
     if (q2Rows.length === 0) {
       log.info('skip: no recommendations', {
         match_id: candidate.match_id,
+        manager_has_equipment: managerHasEquipment,
         conflicts: conflictMatches.length,
       });
       continue;

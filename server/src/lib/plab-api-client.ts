@@ -159,6 +159,8 @@ export class PlabApiClient {
       field_name: string | null;
       manager_name: string;
       manager_phone: string;
+      /** manager.has_manager_equipment (1=장비 보유, 그 외=미보유). 추천 필터에 사용. */
+      manager_has_equipment: number | null;
       participant_count: number;
       grade: number | null;
     }>
@@ -176,6 +178,7 @@ export class PlabApiClient {
         s.name AS field_name,
         mgr.name AS manager_name,
         mgr.phone AS manager_phone,
+        mgr.has_manager_equipment AS manager_has_equipment,
         (SELECT COUNT(*) FROM match_apply ma
          WHERE ma.match_id = m.id AND ma.status = 'confirm') AS participant_count
       FROM \`match\` m
@@ -217,6 +220,8 @@ export class PlabApiClient {
       area_id: number;
       manager_return: number;
       test_type: number | null;
+      /** stadium_group.is_laundry (1=런드리 구장, 그 외=일반). 장비 미보유 매니저 필터에 사용. */
+      is_laundry: number | null;
       participant_count: number;
       grade: number | null;
     }>
@@ -230,6 +235,7 @@ export class PlabApiClient {
         sg.name AS stadium_name,
         s.name AS field_name,
         sg.filter_area_id AS area_id,
+        sg.is_laundry,
         m.manager_return,
         m.test_type,
         (SELECT COUNT(*) FROM match_apply ma

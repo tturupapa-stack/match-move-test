@@ -9,6 +9,7 @@
 > - v1.1 (2026-05-21): 발송 방식을 비즈엠 대용량 발송 양식(엑셀) 생성 + 운영자 수동 발송으로 변경 (ADR-012). 매치 시간 필터를 **전체 시간(00~23시)** 으로 확장 (ADR-011).
 > - **v1.2 (2026-05-21)**: 대상자 규모가 작을 것으로 예상되어 비즈엠 엑셀 방식을 폐기하고 **채널톡 복붙용 메시지(대상자별 복사 카드)** 방식으로 전환 (ADR-013). 변경 근거는 `/.agent-state/teams/dev/adr.md` 참조.
 > - **v1.3 (2026-05-26)**: 추천 매치 시간 윈도우를 단일 시각 → **대상 매치 종료 시점 + 2시간**(매치 길이 2h 가정 ⇒ [S, S+4h])으로 확대. 동일 매니저가 보유한 다른 release 매치와 **시간 구간이 겹치는(2h interval overlap) 추천은 제외**. 연타임(정확히 2h 차이)은 겹침으로 보지 않아 자연 허용.
+> - **v1.4 (2026-05-27)**: 추천 후보를 **매니저 장비 보유 여부**(`manager.has_manager_equipment`) + **런드리 구장 여부**(`stadium_group.is_laundry`)로 필터링. 장비 미보유 매니저는 **런드리 구장(`is_laundry=1`) 매치만** 추천. 보유 매니저는 제약 없음.
 
 ## 1. 시스템 개요
 
@@ -75,14 +76,25 @@
 2. 정시 매치(`MINUTE=0`), status='release', 참가자 < 낮음 기준, 매니저 배정됨(`manager_return=0`)인 매치 추출
 3. 각 대상 매치에 대해 같은 지역구·**확장 시간 윈도우 [S, S+4h]** 추천 매치 검색 (Q2)
 4. 동일 매니저가 보유한 다른 release 매치 조회 (Q-MGR) → **시간 구간이 겹치는 추천 매치 제외** (interval overlap, 매치 길이 2h 가정)
-5. 추천 매치 0개인 대상 매치는 제외
-6. 자체 DB에 대상자 저장 (`notification_status='pending'`)
-7. 이벤트 로그 기록 (`extracted`)
-8. 신규 추출(`inserted > 0`)이 있으면 슬랙에 **대상자 추출 요약 알림** 발송 (F-5)
+5. **장비/런드리 필터** (v1.4): 매니저가 장비 미보유(`mgr.has_manager_equipment ≠ 1`)면 추천 후보 중 런드리 구장(`sg.is_laundry = 1`) 매치만 남기고 나머지 제외
+6. 추천 매치 0개인 대상 매치는 제외
+7. 자체 DB에 대상자 저장 (`notification_status='pending'`)
+8. 이벤트 로그 기록 (`extracted`)
+9. 신규 추출(`inserted > 0`)이 있으면 슬랙에 **대상자 추출 요약 알림** 발송 (F-5)
 
 > **변경 (v1.1)**: 알림톡 자동 발송 트리거 제거. 추출된 대상자는 `pending`으로 누적되고, 발송은 운영자가 F-3 화면에서 pull한다. 시간대 제약(18~23시)을 제거하여 전체 정시 매치를 대상으로 한다.
 
 > **변경 (v1.3, 2026-05-26)**: 추천 시간 윈도우를 단일 시각(`m.schedule = S`) → 범위(`m.schedule BETWEEN S AND S+4h`, 정시만)로 확대. 매치 길이는 일괄 **2시간**으로 가정(PLAB에 duration 필드 없음). 추가로 **매니저 충돌 매치 후처리 필터**를 추가: 동일 매니저(`manager_id = candidate.manager_id, manager_return=0, status='release'`)의 다른 매치와 추천 후보가 `|M.schedule − R.schedule| < 2h`인 경우 제외. 정확히 2h 차이(=연타임)는 경계만 닿으므로 추천 유지. 충돌 매치의 참가자 수 상태는 따지지 않음(다음 크론 주기에 자체 평가됨).
+
+> **변경 (v1.4, 2026-05-27)**: **장비/런드리 필터** 추가. Q1이 `mgr.has_manager_equipment`를, Q2가 `sg.is_laundry`를 함께 가져온다. 추천 후처리에서 매니저 장비 보유 여부 × 추천 매치 런드리 여부 매트릭스로 거른다.
+>
+> | 매니저 `has_manager_equipment` | 추천 매치 `is_laundry` | 결과 |
+> |---|---|---|
+> | `1` (보유) | `1` 또는 그 외 | ✅ 추천 |
+> | `1` 외 (미보유, NULL/0) | `1` (런드리) | ✅ 추천 |
+> | `1` 외 (미보유) | `1` 외 (일반/NULL) | ❌ 제외 |
+>
+> NULL은 안전 측 fallback으로 모두 '아님'(미보유/일반)으로 해석.
 
 **제외 조건**: 같은 매니저에게 이미 같은 매치에 대한 대상자 추출 이력이 있는 경우 (`UNIQUE(manager_id, current_match_id)` + `ON CONFLICT DO NOTHING`)
 
@@ -284,10 +296,11 @@ SELECT
   m.schedule,
   m.manager_id,
   m.stadium_id,
-  sg.area_id,
+  sg.filter_area_id AS area_id,
   sg.name AS stadium_name,
   mgr.name AS manager_name,
   mgr.phone AS manager_phone,
+  mgr.has_manager_equipment AS manager_has_equipment,  -- v1.4: 장비 보유 플래그
   (SELECT COUNT(*) FROM match_apply ma 
    WHERE ma.match_id = m.id AND ma.status = 'confirm') AS participant_count
 FROM `match` m
@@ -304,6 +317,8 @@ HAVING participant_count < ?  -- 낮음 기준
 
 > **변경 (v1.1, ADR-011)**: `HOUR(m.schedule) BETWEEN 18 AND 23` 시간대 제약 제거. 전체 시간(정시)을 대상으로 한다. `MINUTE=0` 정시 제약은 유지.
 
+> **변경 (v1.4, 2026-05-27)**: SELECT에 `mgr.has_manager_equipment` 추가. extract-targets 후처리에서 장비/런드리 매트릭스 필터에 사용.
+
 #### Q2. 추천 매치 검색 (v1.3+ 시간 범위)
 
 ```sql
@@ -313,6 +328,7 @@ SELECT
   m.stadium_id,
   sg.name AS stadium_name,
   sg.filter_area_id AS area_id,
+  sg.is_laundry,                    -- v1.4: 런드리 구장 플래그
   m.manager_return,
   m.test_type,
   (SELECT COUNT(*) FROM match_apply ma 
@@ -330,6 +346,8 @@ HAVING participant_count >= ?   -- 높음 기준
 ```
 
 > **변경 (v1.3, 2026-05-26)**: 단일 시각(`= ?`) → 범위(`>= ? AND <= ?`). 정시 매치만(`MINUTE=0`). 매니저가 가진 다른 매치와의 시간 구간 충돌(2h interval overlap)은 다음 Q-MGR로 후처리.
+
+> **변경 (v1.4, 2026-05-27)**: SELECT에 `sg.is_laundry` 추가. 매니저 장비 미보유 시 extract-targets 후처리에서 `is_laundry = 1` 매치만 통과시킨다.
 
 #### Q-MGR. 매니저 보유 다른 매치 조회 (v1.3+ 충돌 필터)
 
