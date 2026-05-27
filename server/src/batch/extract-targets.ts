@@ -50,9 +50,22 @@ export interface ExtractSummary {
   afterDedup: number;
   afterRecommendationFilter: number;
   inserted: number;
+  /** 매니저 충돌(보유 매치와 2h interval overlap)으로 추천에서 제거된 누적 카운트. */
+  recommendationConflictsFiltered: number;
   /** dryRun일 때만 채워지는 대상 미리보기. */
   preview: ExtractPreviewItem[];
 }
+
+/**
+ * 매치 길이 가정 — PLAB match 테이블에 duration이 없어 일괄 2h로 가정.
+ * 추천 시간 윈도우([S, S+4h]) 계산과 매니저 충돌 판정(|A-B| < 2h)에 공통 사용.
+ */
+const MATCH_DURATION_MS = 2 * 60 * 60 * 1000;
+/** 추천 후보 schedule 윈도우 = [S, S + 4h] (대상 매치 종료 E=S+2h 기준 ±0/+2h). */
+const RECOMMENDATION_WINDOW_AFTER_MS = 2 * MATCH_DURATION_MS;
+/** 매니저 충돌 매치 조회 범위 = [S - 2h, S + 6h] (window 양옆에서 2h까지 겹칠 수 있음). */
+const MANAGER_MATCH_LOOKUP_BEFORE_MS = MATCH_DURATION_MS;
+const MANAGER_MATCH_LOOKUP_AFTER_MS = RECOMMENDATION_WINDOW_AFTER_MS + MATCH_DURATION_MS;
 
 interface ConfigRow {
   low_threshold: number;
@@ -106,8 +119,22 @@ export async function runExtractTargets(ctxOverride: Partial<ExtractContext> = {
     afterDedup: 0,
     afterRecommendationFilter: 0,
     inserted: 0,
+    recommendationConflictsFiltered: 0,
     preview: [],
   };
+
+  // 추천 시간 윈도우(UTC) — Q2가 [from, to] 범위 검색에 사용.
+  const recWindowFromUtc = formatUtcSqlDateTime(targetDate);
+  const recWindowToUtc = formatUtcSqlDateTime(
+    new Date(targetDate.getTime() + RECOMMENDATION_WINDOW_AFTER_MS),
+  );
+  // 매니저 충돌 매치 조회 범위(UTC) — 윈도우 양옆 2h씩 더 넓게.
+  const managerLookupFromUtc = formatUtcSqlDateTime(
+    new Date(targetDate.getTime() - MANAGER_MATCH_LOOKUP_BEFORE_MS),
+  );
+  const managerLookupToUtc = formatUtcSqlDateTime(
+    new Date(targetDate.getTime() + MANAGER_MATCH_LOOKUP_AFTER_MS),
+  );
 
   log.info('extract-targets start', {
     targetScheduleKst,
@@ -135,7 +162,8 @@ export async function runExtractTargets(ctxOverride: Partial<ExtractContext> = {
     let q2Rows: Awaited<ReturnType<PlabApiClient['q2FindRecommendations']>> = [];
     try {
       q2Rows = await ctx.plab.q2FindRecommendations({
-        targetSchedule: targetScheduleUtc,
+        fromScheduleUtc: recWindowFromUtc,
+        toScheduleUtc: recWindowToUtc,
         areaId: candidate.area_id,
         highThreshold: cfg.high_threshold,
       });
@@ -143,8 +171,43 @@ export async function runExtractTargets(ctxOverride: Partial<ExtractContext> = {
       log.error('q2 failed', { match_id: candidate.match_id, err: errMsg(err) });
       continue;
     }
+
+    // 매니저 충돌 매치 조회 + interval overlap(<2h) 후처리.
+    // 동일 매니저가 보유한 다른 release 매치와 시간 구간이 겹치는 추천 매치는 제외.
+    // 정확히 2h 차이(=연타임, 경계만 닿음)는 겹침으로 보지 않음 → 추천 유지.
+    // 참가자 수 상태는 따지지 않음(단순·안전 모드 — 다음 크론 주기에 자체 평가됨).
+    let conflictMatches: Awaited<ReturnType<PlabApiClient['qManagerOtherActiveMatches']>> = [];
+    try {
+      conflictMatches = await ctx.plab.qManagerOtherActiveMatches({
+        managerId: candidate.manager_id,
+        excludeMatchId: candidate.match_id,
+        fromScheduleUtc: managerLookupFromUtc,
+        toScheduleUtc: managerLookupToUtc,
+      });
+    } catch (err) {
+      // 충돌 조회 실패 시 best-effort로 진행(과거 동작과 동일 = 충돌 검사 없이 그대로 추천).
+      log.warn('manager-conflict lookup failed', {
+        manager_id: candidate.manager_id,
+        match_id: candidate.match_id,
+        err: errMsg(err),
+      });
+    }
+    if (conflictMatches.length > 0) {
+      const conflictStarts = conflictMatches.map((m) => parseDbSchedule(m.schedule).getTime());
+      const before = q2Rows.length;
+      q2Rows = q2Rows.filter((r) => {
+        const rStart = parseDbSchedule(r.schedule).getTime();
+        // |conflict.start - r.start| < 2h ⇒ 시간 구간 overlap (매치 길이 2h 기준).
+        return !conflictStarts.some((cs) => Math.abs(cs - rStart) < MATCH_DURATION_MS);
+      });
+      summary.recommendationConflictsFiltered += before - q2Rows.length;
+    }
+
     if (q2Rows.length === 0) {
-      log.info('skip: no recommendations', { match_id: candidate.match_id });
+      log.info('skip: no recommendations', {
+        match_id: candidate.match_id,
+        conflicts: conflictMatches.length,
+      });
       continue;
     }
     summary.afterRecommendationFilter += 1;

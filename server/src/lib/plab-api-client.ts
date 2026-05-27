@@ -198,8 +198,13 @@ export class PlabApiClient {
   // ─── Q2: 추천 매치 검색 ───
   // 같은 filter_area(넓은 지역 단위) 안에서 추천 매치를 찾는다. areaId 인자엔
   // Q1이 반환한 filter_area_id가 그대로 들어온다(이름만 area로 유지).
+  //
+  // 시간 윈도우(v1.2): 단일 시각 → 범위. 대상 매치 schedule S, 매치 길이 2h 가정으로
+  // 종료 E = S+2h. 추천 후보는 [S, E+2h] = [S, S+4h] 범위의 정시 매치.
+  // 매니저가 가진 다른 매치와의 충돌은 extract-targets에서 JS로 후처리(2h interval overlap).
   async q2FindRecommendations(args: {
-    targetSchedule: string;
+    fromScheduleUtc: string; // inclusive, 'YYYY-MM-DD HH:00:00' UTC
+    toScheduleUtc: string; // inclusive, 'YYYY-MM-DD HH:00:00' UTC
     areaId: number;
     highThreshold: number;
   }): Promise<
@@ -234,11 +239,47 @@ export class PlabApiClient {
       JOIN stadium_group sg ON s.group_id = sg.id
       WHERE m.status = 'release'
         AND (m.manager_id IS NULL OR m.manager_id = ${UNASSIGNED_MANAGER_ID} OR m.manager_return = 1)
-        AND m.schedule = ?
+        AND m.schedule >= ?
+        AND m.schedule <= ?
+        AND MINUTE(m.schedule) = 0
         AND sg.filter_area_id = ?
       HAVING participant_count >= ?
     `;
-    const res = await this.executeSql(sql, [args.targetSchedule, args.areaId, args.highThreshold]);
+    const res = await this.executeSql(sql, [
+      args.fromScheduleUtc,
+      args.toScheduleUtc,
+      args.areaId,
+      args.highThreshold,
+    ]);
+    return res.rows as never;
+  }
+
+  // ─── Q-MGR: 대상 매니저가 보유 중인 다른 활성 매치 ───
+  // 추천 매치와의 시간 충돌(2h interval overlap)을 JS에서 판정하기 위해 조회.
+  // 조건: 동일 manager_id, status='release', manager_return=0(양도 아님),
+  // 대상 매치 자체(excludeMatchId)는 제외, 시간 범위 [from, to] (충돌 가능 범위로 넓힘).
+  async qManagerOtherActiveMatches(args: {
+    managerId: number;
+    excludeMatchId: number;
+    fromScheduleUtc: string;
+    toScheduleUtc: string;
+  }): Promise<Array<{ match_id: number; schedule: string; stadium_id: number }>> {
+    const sql = `
+      SELECT m.id AS match_id, m.schedule, m.stadium_id
+      FROM \`match\` m
+      WHERE m.manager_id = ?
+        AND m.id != ?
+        AND m.status = 'release'
+        AND m.manager_return = 0
+        AND m.schedule >= ?
+        AND m.schedule <= ?
+    `;
+    const res = await this.executeSql(sql, [
+      args.managerId,
+      args.excludeMatchId,
+      args.fromScheduleUtc,
+      args.toScheduleUtc,
+    ]);
     return res.rows as never;
   }
 

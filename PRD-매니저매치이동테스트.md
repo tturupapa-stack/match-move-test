@@ -8,6 +8,7 @@
 > - v1.0 (초안): 매시 정각 카카오 알림톡 자동 발송 방식
 > - v1.1 (2026-05-21): 발송 방식을 비즈엠 대용량 발송 양식(엑셀) 생성 + 운영자 수동 발송으로 변경 (ADR-012). 매치 시간 필터를 **전체 시간(00~23시)** 으로 확장 (ADR-011).
 > - **v1.2 (2026-05-21)**: 대상자 규모가 작을 것으로 예상되어 비즈엠 엑셀 방식을 폐기하고 **채널톡 복붙용 메시지(대상자별 복사 카드)** 방식으로 전환 (ADR-013). 변경 근거는 `/.agent-state/teams/dev/adr.md` 참조.
+> - **v1.3 (2026-05-26)**: 추천 매치 시간 윈도우를 단일 시각 → **대상 매치 종료 시점 + 2시간**(매치 길이 2h 가정 ⇒ [S, S+4h])으로 확대. 동일 매니저가 보유한 다른 release 매치와 **시간 구간이 겹치는(2h interval overlap) 추천은 제외**. 연타임(정확히 2h 차이)은 겹침으로 보지 않아 자연 허용.
 
 ## 1. 시스템 개요
 
@@ -72,13 +73,16 @@
 **처리 흐름**:
 1. 3시간 후 시작하는 정시 매치 조회 (Q1)
 2. 정시 매치(`MINUTE=0`), status='release', 참가자 < 낮음 기준, 매니저 배정됨(`manager_return=0`)인 매치 추출
-3. 각 대상 매치에 대해 같은 지역구·같은 시각 추천 매치 검색 (Q2)
-4. 추천 매치 0개인 대상 매치는 제외
-5. 자체 DB에 대상자 저장 (`notification_status='pending'`)
-6. 이벤트 로그 기록 (`extracted`)
-7. 신규 추출(`inserted > 0`)이 있으면 슬랙에 **대상자 추출 요약 알림** 발송 (F-5)
+3. 각 대상 매치에 대해 같은 지역구·**확장 시간 윈도우 [S, S+4h]** 추천 매치 검색 (Q2)
+4. 동일 매니저가 보유한 다른 release 매치 조회 (Q-MGR) → **시간 구간이 겹치는 추천 매치 제외** (interval overlap, 매치 길이 2h 가정)
+5. 추천 매치 0개인 대상 매치는 제외
+6. 자체 DB에 대상자 저장 (`notification_status='pending'`)
+7. 이벤트 로그 기록 (`extracted`)
+8. 신규 추출(`inserted > 0`)이 있으면 슬랙에 **대상자 추출 요약 알림** 발송 (F-5)
 
 > **변경 (v1.1)**: 알림톡 자동 발송 트리거 제거. 추출된 대상자는 `pending`으로 누적되고, 발송은 운영자가 F-3 화면에서 pull한다. 시간대 제약(18~23시)을 제거하여 전체 정시 매치를 대상으로 한다.
+
+> **변경 (v1.3, 2026-05-26)**: 추천 시간 윈도우를 단일 시각(`m.schedule = S`) → 범위(`m.schedule BETWEEN S AND S+4h`, 정시만)로 확대. 매치 길이는 일괄 **2시간**으로 가정(PLAB에 duration 필드 없음). 추가로 **매니저 충돌 매치 후처리 필터**를 추가: 동일 매니저(`manager_id = candidate.manager_id, manager_return=0, status='release'`)의 다른 매치와 추천 후보가 `|M.schedule − R.schedule| < 2h`인 경우 제외. 정확히 2h 차이(=연타임)는 경계만 닿으므로 추천 유지. 충돌 매치의 참가자 수 상태는 따지지 않음(다음 크론 주기에 자체 평가됨).
 
 **제외 조건**: 같은 매니저에게 이미 같은 매치에 대한 대상자 추출 이력이 있는 경우 (`UNIQUE(manager_id, current_match_id)` + `ON CONFLICT DO NOTHING`)
 
@@ -300,7 +304,7 @@ HAVING participant_count < ?  -- 낮음 기준
 
 > **변경 (v1.1, ADR-011)**: `HOUR(m.schedule) BETWEEN 18 AND 23` 시간대 제약 제거. 전체 시간(정시)을 대상으로 한다. `MINUTE=0` 정시 제약은 유지.
 
-#### Q2. 추천 매치 검색
+#### Q2. 추천 매치 검색 (v1.3+ 시간 범위)
 
 ```sql
 SELECT 
@@ -308,7 +312,7 @@ SELECT
   m.schedule,
   m.stadium_id,
   sg.name AS stadium_name,
-  sg.area_id,
+  sg.filter_area_id AS area_id,
   m.manager_return,
   m.test_type,
   (SELECT COUNT(*) FROM match_apply ma 
@@ -317,11 +321,31 @@ FROM `match` m
 JOIN stadium s ON m.stadium_id = s.id
 JOIN stadium_group sg ON s.group_id = sg.id
 WHERE m.status = 'release'
-  AND (m.manager_id IS NULL OR m.manager_return = 1)
-  AND m.schedule = ?
-  AND sg.area_id = ?
-HAVING participant_count >= ?  -- 높음 기준
+  AND (m.manager_id IS NULL OR m.manager_id = 102 OR m.manager_return = 1)
+  AND m.schedule >= ?           -- 대상 매치 시각 S
+  AND m.schedule <= ?           -- S + 4h (= 종료 E + 2h, 매치 길이 2h 가정)
+  AND MINUTE(m.schedule) = 0
+  AND sg.filter_area_id = ?
+HAVING participant_count >= ?   -- 높음 기준
 ```
+
+> **변경 (v1.3, 2026-05-26)**: 단일 시각(`= ?`) → 범위(`>= ? AND <= ?`). 정시 매치만(`MINUTE=0`). 매니저가 가진 다른 매치와의 시간 구간 충돌(2h interval overlap)은 다음 Q-MGR로 후처리.
+
+#### Q-MGR. 매니저 보유 다른 매치 조회 (v1.3+ 충돌 필터)
+
+```sql
+SELECT m.id AS match_id, m.schedule, m.stadium_id
+FROM `match` m
+WHERE m.manager_id = ?       -- 대상 매니저
+  AND m.id != ?              -- 대상 매치 자체 제외
+  AND m.status = 'release'
+  AND m.manager_return = 0   -- 양도 중인 매치는 제외
+  AND m.schedule >= ?        -- S - 2h
+  AND m.schedule <= ?        -- S + 6h
+```
+
+**필터링 로직 (JS)**: 추천 후보 R에 대해, 위 결과의 어떤 매치 M이든 `|M.schedule − R.schedule| < 2h`이면 R 제외.
+정확히 2h 차이(=연타임, 경계만 닿음)는 겹침으로 보지 않아 추천 유지.
 
 #### Q4. 추천 매치 최신 상태 재조회 (페이지 진입 시)
 
@@ -374,12 +398,13 @@ WHERE id IN (?, ?, ?)  -- 발송 대기 대상자의 manager_id 목록
 | 쿼리 | 일일 추정 호출 수 (50개 매치 모수) |
 | --- | --- |
 | Q1 | 24 (매시 정각 1회 — v1.1 전체 시간) |
-| Q2 | 평균 15~25 (시간대 확장으로 증가) |
+| Q2 | 평균 15~25 (시간대 확장으로 증가, v1.3 범위 확대로도 호출 횟수 자체는 동일) |
+| Q-MGR (v1.3+) | dedup 후 후보 수만큼 = 평균 15~25 |
 | Q4 | 평균 5 |
 | Q5 | 평균 3 |
 | Q6 | 50 / 테스트 기간 |
 | Q7 (연락처) | 발송 관리 화면 조회당 1회 |
-| **합계** | **약 60~80회/일** |
+| **합계** | **약 80~110회/일** (v1.3 Q-MGR 추가분 포함) |
 
 **[확인 필요]** API 키 발급 후 일일 할당량 확인. v1.1(전체 시간 확장)로 호출량이 증가했으므로 **100회 이상 권장**. 부족 시 매치 시간대를 다시 좁히거나 Q2 결과 캐싱 검토.
 
