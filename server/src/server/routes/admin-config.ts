@@ -4,6 +4,7 @@ import { runExtractTargets } from '../../batch/extract-targets.js';
 import { query } from '../../lib/db.js';
 import type {
   AdminConfig,
+  AdminRecommendationWindow,
   AdminSchedule,
   ApiOk,
   ManualExtractResult,
@@ -117,6 +118,66 @@ adminConfigRouter.put('/schedule', async (req, res) => {
   });
 });
 
+// === 추천 매치 시간 윈도우 ===
+// 대상 매치 시작 시각 S 기준 [S - beforeMinutes, S + afterMinutes] 범위.
+// before/after 모두 0~1440(=24h) 분. 두 값 같이 0이면 사실상 추천 없음(빈 윈도우).
+const recommendationWindowUpdateSchema = z.object({
+  beforeMinutes: z.number().int().min(0).max(24 * 60),
+  afterMinutes: z.number().int().min(0).max(24 * 60),
+  changedBy: z.string().max(64).optional(),
+});
+
+adminConfigRouter.get('/recommendation-window', async (_req, res) => {
+  const r = await query<{
+    before_minutes: number;
+    after_minutes: number;
+    changed_by: string | null;
+    changed_at: string;
+  }>(
+    `SELECT before_minutes, after_minutes, changed_by, changed_at::text
+       FROM recommendation_window_config ORDER BY id DESC LIMIT 50`,
+  );
+  const history = r.rows.map((row) => ({
+    beforeMinutes: row.before_minutes,
+    afterMinutes: row.after_minutes,
+    changedBy: row.changed_by,
+    changedAt: row.changed_at,
+  }));
+  // seed가 비어 있는 환경(과거 DB)에서도 safe — 기본값과 동일.
+  const current = history[0] ?? { beforeMinutes: 0, afterMinutes: 240 };
+  const data: AdminRecommendationWindow = {
+    current: { beforeMinutes: current.beforeMinutes, afterMinutes: current.afterMinutes },
+    history,
+  };
+  res.json({ ok: true, data } satisfies ApiOk<AdminRecommendationWindow>);
+});
+
+adminConfigRouter.put('/recommendation-window', async (req, res) => {
+  const parsed = recommendationWindowUpdateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ ok: false, error: { code: 'invalid_body', message: parsed.error.message } });
+  }
+  const { beforeMinutes, afterMinutes, changedBy } = parsed.data;
+  if (beforeMinutes === 0 && afterMinutes === 0) {
+    return res.status(400).json({
+      ok: false,
+      error: {
+        code: 'invalid_window',
+        message: 'before/after 둘 다 0이면 추천 윈도우가 비어 어떤 매치도 추천되지 않습니다.',
+      },
+    });
+  }
+  await query(
+    `INSERT INTO recommendation_window_config (before_minutes, after_minutes, changed_by)
+     VALUES ($1, $2, $3)`,
+    [beforeMinutes, afterMinutes, changedBy ?? null],
+  );
+  res.json({
+    ok: true,
+    data: { current: { beforeMinutes, afterMinutes }, history: [] } satisfies AdminRecommendationWindow,
+  });
+});
+
 const promotionUpdateSchema = z.object({
   entries: z.array(
     z.object({
@@ -164,6 +225,9 @@ const runExtractSchema = z.object({
     .optional(),
   lowThreshold: z.number().int().positive().max(50).optional(),
   highThreshold: z.number().int().positive().max(50).optional(),
+  // 윈도우 override(분). 둘 다 같이 보내야 적용. 한쪽만 보내면 무시(DB 설정 사용).
+  windowBeforeMinutes: z.number().int().min(0).max(24 * 60).optional(),
+  windowAfterMinutes: z.number().int().min(0).max(24 * 60).optional(),
   dryRun: z.boolean().optional().default(true),
 });
 
@@ -178,15 +242,40 @@ adminConfigRouter.post('/run-extract', async (req, res) => {
       .status(400)
       .json({ ok: false, error: { code: 'invalid_body', message: parsed.error.message } });
   }
-  const { targetSchedule, lowThreshold, highThreshold, dryRun } = parsed.data;
+  const {
+    targetSchedule,
+    lowThreshold,
+    highThreshold,
+    windowBeforeMinutes,
+    windowAfterMinutes,
+    dryRun,
+  } = parsed.data;
   if (lowThreshold != null && highThreshold != null && lowThreshold > highThreshold) {
     return res.status(400).json({
       ok: false,
       error: { code: 'invalid_thresholds', message: '낮음 기준은 높음 기준보다 클 수 없습니다.' },
     });
   }
+  if (
+    windowBeforeMinutes != null &&
+    windowAfterMinutes != null &&
+    windowBeforeMinutes === 0 &&
+    windowAfterMinutes === 0
+  ) {
+    return res.status(400).json({
+      ok: false,
+      error: { code: 'invalid_window', message: '추천 윈도우 before/after를 둘 다 0으로 시험하면 추천이 비게 됩니다.' },
+    });
+  }
   try {
-    const summary = await runExtractTargets({ targetSchedule, lowThreshold, highThreshold, dryRun });
+    const summary = await runExtractTargets({
+      targetSchedule,
+      lowThreshold,
+      highThreshold,
+      windowBeforeMinutes,
+      windowAfterMinutes,
+      dryRun,
+    });
     res.json({ ok: true, data: summary } satisfies ApiOk<ManualExtractResult>);
   } catch (err) {
     res.status(502).json({

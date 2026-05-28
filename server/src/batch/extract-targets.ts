@@ -4,6 +4,7 @@ import { query, withTx } from '../lib/db.js';
 import { insertEvent } from '../lib/event-log.js';
 import { log } from '../lib/logger.js';
 import { PlabApiClient, createPlabClient } from '../lib/plab-api-client.js';
+import { loadRecommendationWindow } from '../lib/recommendation-window-config.js';
 import { createSlackClient, type SlackClient } from '../lib/slack-client.js';
 import { makeToken } from '../lib/token.js';
 import {
@@ -28,6 +29,9 @@ export interface ExtractContext {
   /** 지정 시 DB test_config 대신 임시 기준값 사용 (수동 테스트용). */
   lowThreshold?: number;
   highThreshold?: number;
+  /** 지정 시 DB recommendation_window_config 대신 임시 윈도우(분 단위) 사용 (수동 테스트용). */
+  windowBeforeMinutes?: number;
+  windowAfterMinutes?: number;
   /** true면 DB 저장·슬랙 발송 없이 추출 결과만 미리보기. */
   dryRun?: boolean;
 }
@@ -45,6 +49,9 @@ export interface ExtractSummary {
   targetSchedule: string;
   lowThreshold: number;
   highThreshold: number;
+  /** 적용된 추천 윈도우(분) — 운영자가 수동 추출 결과에서 어떤 설정이 쓰였는지 확인. */
+  windowBeforeMinutes: number;
+  windowAfterMinutes: number;
   dryRun: boolean;
   rawCandidates: number;
   afterDedup: number;
@@ -60,14 +67,12 @@ export interface ExtractSummary {
 
 /**
  * 매치 길이 가정 — PLAB match 테이블에 duration이 없어 일괄 2h로 가정.
- * 추천 시간 윈도우([S, S+4h]) 계산과 매니저 충돌 판정(|A-B| < 2h)에 공통 사용.
+ * 추천 시간 윈도우 계산과 매니저 충돌 판정(|A-B| < 2h)에 공통 사용.
  */
 const MATCH_DURATION_MS = 2 * 60 * 60 * 1000;
-/** 추천 후보 schedule 윈도우 = [S, S + 4h] (대상 매치 종료 E=S+2h 기준 ±0/+2h). */
-const RECOMMENDATION_WINDOW_AFTER_MS = 2 * MATCH_DURATION_MS;
-/** 매니저 충돌 매치 조회 범위 = [S - 2h, S + 6h] (window 양옆에서 2h까지 겹칠 수 있음). */
-const MANAGER_MATCH_LOOKUP_BEFORE_MS = MATCH_DURATION_MS;
-const MANAGER_MATCH_LOOKUP_AFTER_MS = RECOMMENDATION_WINDOW_AFTER_MS + MATCH_DURATION_MS;
+/** 매니저 충돌 매치 조회 범위 = 추천 윈도우 양옆 +2h(매치 길이만큼).
+ *  추천 윈도우가 어드민에서 가변이므로 상수가 아니라 로딩 시점에 계산한다. */
+const MANAGER_LOOKUP_PADDING_MS = MATCH_DURATION_MS;
 
 interface ConfigRow {
   low_threshold: number;
@@ -94,6 +99,8 @@ export async function runExtractTargets(ctxOverride: Partial<ExtractContext> = {
     targetSchedule: ctxOverride.targetSchedule,
     lowThreshold: ctxOverride.lowThreshold,
     highThreshold: ctxOverride.highThreshold,
+    windowBeforeMinutes: ctxOverride.windowBeforeMinutes,
+    windowAfterMinutes: ctxOverride.windowAfterMinutes,
     dryRun: ctxOverride.dryRun,
   };
 
@@ -112,10 +119,20 @@ export async function runExtractTargets(ctxOverride: Partial<ExtractContext> = {
       ? { low_threshold: ctx.lowThreshold, high_threshold: ctx.highThreshold }
       : await loadActiveConfig();
 
+  // 추천 윈도우: override(수동 추출 시험용) > DB 설정 순. 둘 다 분 단위.
+  const windowCfg =
+    ctx.windowBeforeMinutes != null && ctx.windowAfterMinutes != null
+      ? { beforeMinutes: ctx.windowBeforeMinutes, afterMinutes: ctx.windowAfterMinutes }
+      : await loadRecommendationWindow();
+  const recWindowBeforeMs = windowCfg.beforeMinutes * 60 * 1000;
+  const recWindowAfterMs = windowCfg.afterMinutes * 60 * 1000;
+
   const summary: ExtractSummary = {
     targetSchedule: targetScheduleKst,
     lowThreshold: cfg.low_threshold,
     highThreshold: cfg.high_threshold,
+    windowBeforeMinutes: windowCfg.beforeMinutes,
+    windowAfterMinutes: windowCfg.afterMinutes,
     dryRun,
     rawCandidates: 0,
     afterDedup: 0,
@@ -127,21 +144,27 @@ export async function runExtractTargets(ctxOverride: Partial<ExtractContext> = {
   };
 
   // 추천 시간 윈도우(UTC) — Q2가 [from, to] 범위 검색에 사용.
-  const recWindowFromUtc = formatUtcSqlDateTime(targetDate);
-  const recWindowToUtc = formatUtcSqlDateTime(
-    new Date(targetDate.getTime() + RECOMMENDATION_WINDOW_AFTER_MS),
+  // [S - beforeMs, S + afterMs] (S = 대상 매치 시작 시각).
+  const recWindowFromUtc = formatUtcSqlDateTime(
+    new Date(targetDate.getTime() - recWindowBeforeMs),
   );
-  // 매니저 충돌 매치 조회 범위(UTC) — 윈도우 양옆 2h씩 더 넓게.
+  const recWindowToUtc = formatUtcSqlDateTime(
+    new Date(targetDate.getTime() + recWindowAfterMs),
+  );
+  // 매니저 충돌 매치 조회 범위(UTC) — 추천 윈도우 양옆 2h(매치 길이)씩 더 넓게.
+  // 추천 후보가 윈도우 경계에 있어도 그와 겹치는 매니저 보유 매치(최대 2h 차이)까지 잡기 위함.
   const managerLookupFromUtc = formatUtcSqlDateTime(
-    new Date(targetDate.getTime() - MANAGER_MATCH_LOOKUP_BEFORE_MS),
+    new Date(targetDate.getTime() - recWindowBeforeMs - MANAGER_LOOKUP_PADDING_MS),
   );
   const managerLookupToUtc = formatUtcSqlDateTime(
-    new Date(targetDate.getTime() + MANAGER_MATCH_LOOKUP_AFTER_MS),
+    new Date(targetDate.getTime() + recWindowAfterMs + MANAGER_LOOKUP_PADDING_MS),
   );
 
   log.info('extract-targets start', {
     targetScheduleKst,
     targetScheduleUtc,
+    windowBeforeMinutes: windowCfg.beforeMinutes,
+    windowAfterMinutes: windowCfg.afterMinutes,
     dryRun,
   });
   const q1Rows = await ctx.plab.q1ExtractTargetMatches({
