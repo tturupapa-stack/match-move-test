@@ -88,6 +88,25 @@ export type AdminScheduleUpdateBody = {
   changedBy?: string;
 };
 
+// === Admin recommendation window (추천 매치 시간 윈도우) ===
+// 대상 매치 시작 시각 S 기준 [S - beforeMinutes, S + afterMinutes] 범위의 매치를
+// 추천 후보로 잡는다. test_config / schedule_config와 동일하게 append-only —
+// 최신 행이 현재 설정. seed: before=0, after=240(=4h).
+export type AdminRecommendationWindow = {
+  current: { beforeMinutes: number; afterMinutes: number };
+  history: Array<{
+    beforeMinutes: number;
+    afterMinutes: number;
+    changedBy: string | null;
+    changedAt: string; // ISO8601
+  }>;
+};
+export type AdminRecommendationWindowUpdateBody = {
+  beforeMinutes: number;
+  afterMinutes: number;
+  changedBy?: string;
+};
+
 // === Promotion map ===
 export type PromotionMapEntry = {
   testType: number;
@@ -220,6 +239,9 @@ export type ManualExtractResult = {
   targetSchedule: string;
   lowThreshold: number;
   highThreshold: number;
+  /** 적용된 추천 윈도우(분) — DB 설정 또는 호출 시 override된 값. */
+  windowBeforeMinutes: number;
+  windowAfterMinutes: number;
   dryRun: boolean;
   rawCandidates: number;
   afterDedup: number;
@@ -231,6 +253,9 @@ export type ManualExtractBody = {
   targetSchedule?: string; // 'YYYY-MM-DD HH:00:00' KST
   lowThreshold?: number;
   highThreshold?: number;
+  /** 임시 추천 윈도우(분). 둘 다 같이 보내야 적용. */
+  windowBeforeMinutes?: number;
+  windowAfterMinutes?: number;
   dryRun?: boolean;
 };
 

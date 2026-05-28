@@ -1,18 +1,29 @@
 'use client';
 
 import { useState } from 'react';
-import { clientFetch, type AdminConfig, type AdminSchedule, type PromotionMap } from '../lib/api';
+import {
+  clientFetch,
+  type AdminConfig,
+  type AdminRecommendationWindow,
+  type AdminSchedule,
+  type PromotionMap,
+} from '../lib/api';
 
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
+// 추천 윈도우 select 후보 — 0~12시간(0.5h 단위 미지원: 매치가 정시만 잡히므로).
+// DB는 분 단위지만 UI는 시간 단위. 운영자가 더 큰 값을 원하면 API 직접 호출로 1440분(24h)까지 가능.
+const WINDOW_HOURS = Array.from({ length: 13 }, (_, h) => h);
 
 export function ConfigForm({
   initial,
   initialPromotionMap,
   initialSchedule,
+  initialWindow,
 }: {
   initial: AdminConfig;
   initialPromotionMap: PromotionMap;
   initialSchedule: AdminSchedule;
+  initialWindow: AdminRecommendationWindow;
 }) {
   const [low, setLow] = useState(initial.current.lowThreshold);
   const [high, setHigh] = useState(initial.current.highThreshold);
@@ -24,6 +35,14 @@ export function ConfigForm({
   const [endHour, setEndHour] = useState(initialSchedule.current.endHour);
   const [enabled, setEnabled] = useState(initialSchedule.current.enabled);
 
+  // 추천 윈도우: UI는 시간 단위, DB/API는 분 단위. 60으로 환산해 저장.
+  const [windowBeforeHours, setWindowBeforeHours] = useState(
+    Math.round(initialWindow.current.beforeMinutes / 60),
+  );
+  const [windowAfterHours, setWindowAfterHours] = useState(
+    Math.round(initialWindow.current.afterMinutes / 60),
+  );
+
   const saveSchedule = async () => {
     setErr(null);
     setSaving(true);
@@ -31,6 +50,27 @@ export function ConfigForm({
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ startHour, endHour, enabled, changedBy: 'admin-ui' }),
+    });
+    setSaving(false);
+    if (r.ok) setSavedAt(new Date().toISOString());
+    else setErr(r.error.message);
+  };
+
+  const saveWindow = async () => {
+    setErr(null);
+    if (windowBeforeHours === 0 && windowAfterHours === 0) {
+      setErr('before/after를 둘 다 0으로 두면 추천 윈도우가 비어 어떤 매치도 추천되지 않습니다.');
+      return;
+    }
+    setSaving(true);
+    const r = await clientFetch<AdminRecommendationWindow>('/api/admin/recommendation-window', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        beforeMinutes: windowBeforeHours * 60,
+        afterMinutes: windowAfterHours * 60,
+        changedBy: 'admin-ui',
+      }),
     });
     setSaving(false);
     if (r.ok) setSavedAt(new Date().toISOString());
@@ -207,6 +247,65 @@ export function ConfigForm({
         >
           운영 시간대 저장
         </button>
+      </section>
+
+      <section className="rounded-xl border border-line bg-white p-6">
+        <h2 className="text-lg font-semibold">추천 매치 시간 윈도우</h2>
+        <p className="mt-1 text-sm text-muted">
+          대상 매치 시작 시각 S 기준 <b>[S − 이전 시간, S + 이후 시간]</b> 범위에서 시작하는 매치를 추천 후보로 잡습니다.
+          매니저 보유 매치와 2시간 이내로 겹치는 매치는 별도 충돌 필터로 제외됩니다.
+        </p>
+        <div className="mt-4 grid grid-cols-2 gap-4">
+          <label className="block">
+            <span className="text-sm text-muted">이전 (S − N시간)</span>
+            <select
+              value={windowBeforeHours}
+              onChange={(e) => setWindowBeforeHours(Number(e.target.value))}
+              className="mt-1 w-full rounded-lg border border-line px-3 py-2"
+            >
+              {WINDOW_HOURS.map((h) => (
+                <option key={h} value={h}>{h === 0 ? '0시간 (S부터)' : `${h}시간`}</option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="text-sm text-muted">이후 (S + N시간)</span>
+            <select
+              value={windowAfterHours}
+              onChange={(e) => setWindowAfterHours(Number(e.target.value))}
+              className="mt-1 w-full rounded-lg border border-line px-3 py-2"
+            >
+              {WINDOW_HOURS.map((h) => (
+                <option key={h} value={h}>{h === 0 ? '0시간 (S까지)' : `${h}시간`}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <p className="mt-2 text-xs text-muted">
+          현재 설정: S 기준 {windowBeforeHours}시간 전 ~ {windowAfterHours}시간 후 (총 {windowBeforeHours + windowAfterHours}시간 윈도우).
+          {' '}예: S=20:00, before=0, after=4 → 20:00 ~ 24:00 매치가 추천 후보.
+        </p>
+        <button
+          type="button"
+          onClick={() => void saveWindow()}
+          disabled={saving}
+          className="mt-4 rounded-lg bg-brand px-4 py-2 text-white font-semibold disabled:opacity-50"
+        >
+          추천 윈도우 저장
+        </button>
+        {initialWindow.history.length > 0 ? (
+          <details className="mt-4">
+            <summary className="cursor-pointer text-sm text-muted">변경 이력</summary>
+            <ul className="mt-2 space-y-1 text-sm">
+              {initialWindow.history.map((h, i) => (
+                <li key={i}>
+                  {h.changedAt} — before={Math.round(h.beforeMinutes / 60)}h, after={Math.round(h.afterMinutes / 60)}h, by{' '}
+                  {h.changedBy ?? '-'}
+                </li>
+              ))}
+            </ul>
+          </details>
+        ) : null}
       </section>
 
       {err ? <div className="rounded-lg border border-danger/30 bg-red-50 px-4 py-3 text-sm text-danger">{err}</div> : null}
