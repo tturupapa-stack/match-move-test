@@ -66,7 +66,7 @@ export default async function MatchMovePage(props: PageProps) {
 
 function Wrap({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-2xl space-y-6">
       <header>
         <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
         <p className="mt-1 text-sm text-muted">진행 가능성이 높은 매치를 추천드립니다.</p>
