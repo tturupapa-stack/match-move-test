@@ -71,6 +71,8 @@ export function ActionView({
     <div className="space-y-6">
       <CurrentMatchCard m={current} />
 
+      <StatusBanner tone="info">매치 변경 기능을 통해 이동한 매치에는 프로모션 적용이 되지 않습니다.</StatusBanner>
+
       <div>
         <h2 className="mb-3 text-sm font-semibold text-muted">추천 매치 ({recommendations.length})</h2>
         <div className="space-y-3">
