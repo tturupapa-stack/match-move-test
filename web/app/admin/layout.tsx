@@ -13,8 +13,8 @@ const TABS = [
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="space-y-6">
-      <nav className="flex gap-1 border-b border-line">
+    <div className="mx-auto w-full max-w-screen-xl space-y-6">
+      <nav className="flex flex-wrap gap-1 border-b border-line">
         {TABS.map((t) => (
           <Link
             key={t.href}
